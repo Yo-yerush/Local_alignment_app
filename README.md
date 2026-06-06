@@ -2,7 +2,9 @@
 
 A local JavaScript app for exploratory alignment of DNA, RNA, and protein FASTA sequences.
 
-Open `index.html` in any modern browser. No installation, Node.js, R, Python, server, or internet connection is required.
+**No installation, Node.js, R, Python, server, or internet connection is required.*
+
+Open `Local_alignment.html` in any modern browser.
 
 ## What it does
 
