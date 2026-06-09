@@ -192,15 +192,35 @@ const DOM = {
   seg4Row: document.getElementById("seg4Row"),
   annSeqSelect: document.getElementById("annSeqSelect"),
   annResPos: document.getElementById("annResPos"),
+  annNameInputLabel: document.getElementById("annNameInputLabel"),
   annNameInput: document.getElementById("annNameInput"),
   annLabelInput: document.getElementById("annLabelInput"),
   annTrackLabelLabel: document.getElementById("annTrackLabelLabel"),
+  annTextColorLabel: document.getElementById("annTextColorLabel"),
+  annBgColorLabel: document.getElementById("annBgColorLabel"),
   annColorInput: document.getElementById("annColorInput"),
   annTextColorInput: document.getElementById("annTextColorInput"),
+  annHasBg: document.getElementById("annHasBg"),
   addAnnBtn: document.getElementById("addAnnBtn"),
   cancelAnnBtn: document.getElementById("cancelAnnBtn"),
   rangeInputsRow: document.getElementById("rangeInputsRow"),
+  annOverlaySeqsLabel1: document.getElementById("annOverlaySeqsLabel1"),
+  annOverlaySeqsSelect1: document.getElementById("annOverlaySeqsSelect1"),
+  annOverlaySeqsLabel2: document.getElementById("annOverlaySeqsLabel2"),
+  annOverlaySeqsSelect2: document.getElementById("annOverlaySeqsSelect2"),
+  annOverlaySeqsLabel3: document.getElementById("annOverlaySeqsLabel3"),
+  annOverlaySeqsSelect3: document.getElementById("annOverlaySeqsSelect3"),
+  annOverlaySeqsLabel4: document.getElementById("annOverlaySeqsLabel4"),
+  annOverlaySeqsSelect4: document.getElementById("annOverlaySeqsSelect4"),
   residueInputsRow: document.getElementById("residueInputsRow"),
+  annLayoutOptionsRow: document.getElementById("annLayoutOptionsRow"),
+  annPositionGroup: document.getElementById("annPositionGroup"),
+  annShapeSelect: document.getElementById("annShapeSelect"),
+  annOverlayOptionsRow: document.getElementById("annOverlayOptionsRow"),
+  annOverlayShapeGroup: document.getElementById("annOverlayShapeGroup"),
+  annLineStyleGroup: document.getElementById("annLineStyleGroup"),
+  annLineWidthGroup: document.getElementById("annLineWidthGroup"),
+  annFillBoxes: document.getElementById("annFillBoxes"),
   showColumnNumbers: document.getElementById("showColumnNumbers")
 };
 
@@ -291,7 +311,7 @@ function parseResiduePositions(inputStr) {
 }
 
 function getAnnotationsData() {
-  const rangeAnnotations = annotationsArray.filter(a => a.type === "range");
+  const rangeAnnotations = annotationsArray.filter(a => a.type === "range" || a.type === "overlay" || a.type === "rect-overlay" || a.type === "border-overlay" || a.type === "line-overlay");
   const residueAnnotations = new Map();
   for (const ann of annotationsArray.filter(a => a.type === "residue")) {
     const positions = ann.positions || (ann.position ? [ann.position] : []);
@@ -302,11 +322,53 @@ function getAnnotationsData() {
   return { rangeAnnotations, residueAnnotations };
 }
 
+function makeSelectToggleable(selectEl) {
+  if (!selectEl) return;
+  selectEl.addEventListener('mousedown', function(e) {
+    e.preventDefault();
+    const option = e.target.closest('option');
+    if (!option) return;
+    
+    if (option.value === 'all') {
+      Array.from(selectEl.options).forEach(opt => {
+        opt.selected = (opt.value === 'all');
+      });
+    } else {
+      option.selected = !option.selected;
+      
+      const allOpt = Array.from(selectEl.options).find(opt => opt.value === 'all');
+      if (allOpt) {
+        const hasSelectedOther = Array.from(selectEl.options).some(opt => opt.value !== 'all' && opt.selected);
+        if (hasSelectedOther) {
+          allOpt.selected = false;
+        } else {
+          allOpt.selected = true;
+        }
+      }
+    }
+    selectEl.dispatchEvent(new Event('change'));
+  });
+}
+
 function updateAnnotationSeqSelect(records) {
   if (!DOM.annSeqSelect) return;
   try {
     const recs = records || parseFasta(DOM.fastaInput.value);
     DOM.annSeqSelect.innerHTML = "";
+    
+    const overlaySelects = [
+      DOM.annOverlaySeqsSelect1,
+      DOM.annOverlaySeqsSelect2,
+      DOM.annOverlaySeqsSelect3,
+      DOM.annOverlaySeqsSelect4
+    ];
+    
+    overlaySelects.forEach(sel => {
+      if (sel) {
+        sel.innerHTML = '<option value="all" selected>All sequences</option>';
+      }
+    });
+    
     if (recs.length === 0) {
       const opt = document.createElement("option");
       opt.value = "";
@@ -319,6 +381,15 @@ function updateAnnotationSeqSelect(records) {
       opt.value = rec.name;
       opt.textContent = rec.name;
       DOM.annSeqSelect.appendChild(opt);
+      
+      overlaySelects.forEach(sel => {
+        if (sel) {
+          const optOverlay = document.createElement("option");
+          optOverlay.value = rec.name;
+          optOverlay.textContent = rec.name;
+          sel.appendChild(optOverlay);
+        }
+      });
     }
   } catch (e) {
     DOM.annSeqSelect.innerHTML = `<option value="">(Error parsing sequences)</option>`;
@@ -344,7 +415,7 @@ function renderAnnotationsList() {
     
     const desc = document.createElement("span");
     desc.className = "ann-desc";
-    if (ann.type === "range") {
+    if (ann.type === "range" || ann.type === "overlay" || ann.type === "rect-overlay" || ann.type === "border-overlay" || ann.type === "line-overlay") {
       let descText = "";
       let rangesText = "";
       if (ann.ranges && ann.ranges.length > 0) {
@@ -384,16 +455,15 @@ function renderAnnotationsList() {
       DOM.cancelAnnBtn.style.display = "inline-block";
       
       DOM.annTypeSelect.value = ann.type;
+      updateAnnotationFormLayout();
       DOM.annNameInput.value = ann.name || "";
       DOM.annLabelInput.value = ann.label || "";
       DOM.annColorInput.value = ann.color;
       
-      if (ann.type === "range") {
-        DOM.rangeInputsRow.style.display = "flex";
-        DOM.residueInputsRow.style.display = "none";
-        DOM.annTrackLabelLabel.style.display = "flex";
-        DOM.annTextColorLabel.style.display = "flex";
-        DOM.annTextColorInput.value = ann.textColor || "#ffffff";
+      if (ann.type === "range" || ann.type === "overlay" || ann.type === "rect-overlay" || ann.type === "border-overlay" || ann.type === "line-overlay") {
+        DOM.annTextColorInput.value = ann.textColor || "#000000";
+        DOM.annHasBg.checked = ann.hasBg !== undefined ? !!ann.hasBg : (ann.transparentBg === false);
+        updateBgColorVisibility();
         
         DOM.annHasSeg2.checked = false;
         DOM.annHasSeg3.checked = false;
@@ -439,11 +509,60 @@ function renderAnnotationsList() {
           DOM.annStartCol.value = ann.start || "";
           DOM.annEndCol.value = ann.end || "";
         }
+        if (ann.type === "range") {
+          DOM.annLayoutOptionsRow.style.display = "flex";
+          DOM.annOverlayOptionsRow.style.display = "none";
+          setSegmentedValue("annPositionGroup", ann.position || "bottom");
+          DOM.annShapeSelect.value = ann.shape || "curly";
+        } else {
+          DOM.annLayoutOptionsRow.style.display = "none";
+          DOM.annOverlayOptionsRow.style.display = "flex";
+          
+          let oShape = ann.overlayShape || "rect";
+          let lStyle = ann.lineStyle || "solid";
+          let lWidth = ann.lineWidth || 2;
+          let fBoxes = ann.fillBoxes !== false;
+          
+          if (ann.type === "rect-overlay") {
+            oShape = "rect"; lStyle = "solid"; lWidth = 1; fBoxes = true;
+          } else if (ann.type === "border-overlay") {
+            oShape = "rect"; lStyle = "dashed"; lWidth = 2; fBoxes = false;
+          } else if (ann.type === "line-overlay") {
+            oShape = "lines"; lStyle = "dashed"; lWidth = 1.5; fBoxes = false;
+          }
+          
+          setSegmentedValue("annOverlayShapeGroup", oShape);
+          setSegmentedValue("annLineStyleGroup", lStyle);
+          setSegmentedValue("annLineWidthGroup", String(lWidth));
+          DOM.annFillBoxes.checked = fBoxes;
+          
+          const overlaySelects = [
+            DOM.annOverlaySeqsSelect1,
+            DOM.annOverlaySeqsSelect2,
+            DOM.annOverlaySeqsSelect3,
+            DOM.annOverlaySeqsSelect4
+          ];
+          overlaySelects.forEach((sel, sIdx) => {
+            if (sel) {
+              let seqs = ["all"];
+              if (ann.ranges && ann.ranges[sIdx]) {
+                seqs = ann.ranges[sIdx].sequences || (sIdx === 0 ? ann.sequences : undefined) || ["all"];
+              } else if (sIdx === 0) {
+                seqs = ann.sequences || ["all"];
+              }
+              Array.from(sel.options).forEach(opt => {
+                opt.selected = seqs.includes(opt.value);
+              });
+            }
+          });
+        }
       } else {
         DOM.rangeInputsRow.style.display = "none";
         DOM.residueInputsRow.style.display = "flex";
         DOM.annTrackLabelLabel.style.display = "none";
         DOM.annTextColorLabel.style.display = "none";
+        DOM.annLayoutOptionsRow.style.display = "none";
+        DOM.annOverlayOptionsRow.style.display = "none";
         DOM.annSeqSelect.value = ann.sequence;
         DOM.annResPos.value = ann.positionInput || ann.position || "";
       }
@@ -481,6 +600,69 @@ function onAnnotationsUpdated() {
   }
 }
 
+function initSegmentedControl(groupId) {
+  const group = document.getElementById(groupId);
+  if (!group) return;
+  const buttons = group.querySelectorAll("button");
+  buttons.forEach(btn => {
+    btn.addEventListener("click", () => {
+      buttons.forEach(b => {
+        b.classList.remove("active");
+        b.classList.remove("primary");
+        b.classList.add("ghost");
+      });
+      btn.classList.add("active");
+      btn.classList.remove("ghost");
+      btn.classList.add("primary");
+    });
+  });
+}
+
+function setSegmentedValue(groupId, value) {
+  const group = document.getElementById(groupId);
+  if (!group) return;
+  const buttons = group.querySelectorAll("button");
+  buttons.forEach(b => {
+    if (b.getAttribute("data-value") === value) {
+      b.classList.add("active");
+      b.classList.remove("ghost");
+      b.classList.add("primary");
+    } else {
+      b.classList.remove("active");
+      b.classList.remove("primary");
+      b.classList.add("ghost");
+    }
+  });
+}
+
+function getAnnotationPath(shape, position, x1, x2, y) {
+  const isTop = (position === "top");
+  const h = isTop ? 5 : -5;
+  const r = isTop ? 3 : -3;
+  const xMid = (x1 + x2) / 2;
+  
+  if (shape === "line") {
+    return `M ${x1} ${y + h} L ${x2} ${y + h}`;
+  }
+  if (shape === "edges") {
+    return `M ${x1} ${y} L ${x1} ${y + h} L ${x2} ${y + h} L ${x2} ${y}`;
+  }
+  if (shape === "arrow") {
+    return `M ${x1} ${y} L ${xMid - 4} ${y} L ${xMid} ${y + h} L ${xMid + 4} ${y} L ${x2} ${y}`;
+  }
+  // Default: curly
+  if (x2 - x1 < 8) {
+    return `M ${x1} ${y} L ${xMid} ${y + h} L ${x2} ${y}`;
+  }
+  return `M ${x1} ${y} 
+          Q ${x1} ${y + h} ${x1 + r} ${y + h} 
+          L ${xMid - r} ${y + h} 
+          Q ${xMid} ${y + h} ${xMid} ${y + h + r} 
+          Q ${xMid} ${y + h} ${xMid + r} ${y + h} 
+          L ${x2 - r} ${y + h} 
+          Q ${x2} ${y + h} ${x2} ${y}`;
+}
+
 function cancelEditMode() {
   editingIndex = null;
   DOM.addAnnBtn.textContent = "Add Feature";
@@ -498,7 +680,10 @@ function cancelEditMode() {
   DOM.annEndCol4.value = "";
   DOM.annResPos.value = "";
   DOM.annColorInput.value = "#315efb";
-  DOM.annTextColorInput.value = "#ffffff";
+  DOM.annTextColorInput.value = "#000000";
+  DOM.annHasBg.checked = false;
+  DOM.annTypeSelect.value = "range";
+  updateAnnotationFormLayout();
   
   DOM.annHasSeg2.checked = false;
   DOM.annHasSeg3.checked = false;
@@ -506,6 +691,26 @@ function cancelEditMode() {
   DOM.seg2Row.style.display = "none";
   DOM.seg3Row.style.display = "none";
   DOM.seg4Row.style.display = "none";
+  
+  setSegmentedValue("annPositionGroup", "bottom");
+  DOM.annShapeSelect.value = "curly";
+  setSegmentedValue("annOverlayShapeGroup", "rect");
+  setSegmentedValue("annLineStyleGroup", "solid");
+  setSegmentedValue("annLineWidthGroup", "2");
+  DOM.annFillBoxes.checked = true;
+  const overlaySelects = [
+    DOM.annOverlaySeqsSelect1,
+    DOM.annOverlaySeqsSelect2,
+    DOM.annOverlaySeqsSelect3,
+    DOM.annOverlaySeqsSelect4
+  ];
+  overlaySelects.forEach(sel => {
+    if (sel) {
+      Array.from(sel.options).forEach(opt => {
+        opt.selected = (opt.value === "all");
+      });
+    }
+  });
 }
 
 function formatSimpleLabel(W, label) {
@@ -1268,6 +1473,26 @@ function renderStats(result) {
   }
 }
 
+function renderRangeAnnotationRow(ann, annIndex, start, end, len, result) {
+  const row = document.createElement("div");
+  row.className = "aln-row annotation-spacer";
+  row.setAttribute("data-ann-index", annIndex);
+  
+  const nameEl = document.createElement("div");
+  nameEl.className = "aln-name annotation-spacer-name";
+  nameEl.style.background = "transparent";
+  
+  const cells = document.createElement("div");
+  cells.className = "aln-cells annotation-spacer-cells";
+  cells.style.height = "28px";
+  
+  const pos = document.createElement("div");
+  pos.className = "aln-pos";
+  
+  row.append(nameEl, cells, pos);
+  return row;
+}
+
 function renderAlignmentViewer(result) {
   const wrap = result.settings.wrapCols;
   const len = result.aligned[0]?.length || 0;
@@ -1276,6 +1501,8 @@ function renderAlignmentViewer(result) {
     const end = Math.min(start + wrap, len);
     const block = document.createElement("div");
     block.className = "aln-block";
+    block.setAttribute("data-start-col", start);
+    block.setAttribute("data-end-col", end);
     
     // Render Position Ruler Row
     if (result.settings.showColumnNumbers) {
@@ -1298,34 +1525,26 @@ function renderAlignmentViewer(result) {
       block.appendChild(rulerRow);
     }
     
+    // Render Top Range Annotations (Above alignment rows)
+    if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
+      result.rangeAnnotations.forEach((ann, annIndex) => {
+        if (ann.type === "range" && ann.position === "top") {
+          block.appendChild(renderRangeAnnotationRow(ann, annIndex, start, end, len, result));
+        }
+      });
+    }
+    
     // Render sequence rows
     for (let row = 0; row < result.aligned.length; row++) {
       block.appendChild(renderAlignmentRow(result.names[row], result.aligned[row], start, end, result, row));
     }
     
-    // Render Approach 1 - Range Annotations
+    // Render Bottom Range Annotations (Below alignment rows)
     if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
       result.rangeAnnotations.forEach((ann, annIndex) => {
-        const annotSeq = Array(len).fill(" ");
-        if (ann.ranges && ann.ranges.length > 0) {
-          for (const r of ann.ranges) {
-            const W = r.end - r.start + 1;
-            const segmentStr = formatSimpleLabel(W, ann.label);
-            for (let i = 0; i < W; i++) {
-              annotSeq[r.start - 1 + i] = segmentStr[i];
-            }
-          }
-        } else if (ann.start && ann.end) {
-          const W = ann.end - ann.start + 1;
-          const segmentStr = formatSimpleLabel(W, ann.label);
-          for (let i = 0; i < W; i++) {
-            annotSeq[ann.start - 1 + i] = segmentStr[i];
-          }
+        if (ann.type === "range" && ann.position !== "top") {
+          block.appendChild(renderRangeAnnotationRow(ann, annIndex, start, end, len, result));
         }
-        const rowSeq = annotSeq.slice(start, end).join("");
-        const row = renderSpecialRow(ann.name || ann.label || "", rowSeq, start, end, result, "annotation-row", ann);
-        row.setAttribute("data-ann-index", annIndex);
-        block.appendChild(row);
       });
     }
     
@@ -1346,6 +1565,135 @@ function renderAlignmentViewer(result) {
   redrawSVGOverlays(result);
 }
 
+function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
+  const isTop = (ann.position === "top");
+  const xMid = (x1 + x2) / 2;
+  
+  if (shape === "curly" || shape === "edges" || shape === "arrow") {
+    const pathD = getAnnotationPath(shape, ann.position || "bottom", x1, x2, y);
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathD);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.5");
+    svg.appendChild(path);
+  } else if (shape === "line") {
+    const pathD = `M ${x1} ${y} L ${x2} ${y} M ${x1} ${y - 4} L ${x1} ${y + 4} M ${x2} ${y - 4} L ${x2} ${y + 4}`;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathD);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.5");
+    svg.appendChild(path);
+  } else if (shape === "helix") {
+    let pathD = `M ${x1} ${y}`;
+    const waveL = 10;
+    const amp = 4;
+    const numCycles = Math.ceil((x2 - x1) / waveL);
+    for (let i = 0; i < numCycles; i++) {
+      const cx1 = x1 + i * waveL + waveL * 0.25;
+      const cy1 = y - amp;
+      const cx2 = x1 + i * waveL + waveL * 0.75;
+      const cy2 = y + amp;
+      const endX = Math.min(x2, x1 + (i + 1) * waveL);
+      pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${y}`;
+    }
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathD);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.5");
+    svg.appendChild(path);
+  } else if (shape === "loop") {
+    const loopH = isTop ? -8 : 8;
+    const xPart1 = x1 + (x2 - x1) / 3;
+    const xPart2 = x1 + 2 * (x2 - x1) / 3;
+    const mid1 = (x1 + xPart1) / 2;
+    const mid2 = (xPart1 + xPart2) / 2;
+    const mid3 = (xPart2 + x2) / 2;
+    const pathD = `M ${x1} ${y} Q ${mid1} ${y + loopH} ${xPart1} ${y} Q ${mid2} ${y + loopH} ${xPart2} ${y} Q ${mid3} ${y + loopH} ${x2} ${y}`;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathD);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.5");
+    svg.appendChild(path);
+  } else if (shape === "cylinder") {
+    const fill = ann.hasBg ? (ann.color || "#315efb") : "none";
+    const fillOpacity = ann.hasBg ? "0.3" : "0";
+    
+    const leftCap = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+    leftCap.setAttribute("cx", String(x1));
+    leftCap.setAttribute("cy", String(y));
+    leftCap.setAttribute("rx", "3");
+    leftCap.setAttribute("ry", "5");
+    leftCap.setAttribute("stroke", color);
+    leftCap.setAttribute("stroke-width", "1.5");
+    leftCap.setAttribute("fill", fill);
+    if (ann.hasBg) leftCap.setAttribute("fill-opacity", fillOpacity);
+    svg.appendChild(leftCap);
+    
+    const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", String(x1));
+    rect.setAttribute("y", String(y - 5));
+    rect.setAttribute("width", String(x2 - x1));
+    rect.setAttribute("height", "10");
+    rect.setAttribute("rx", "3");
+    rect.setAttribute("ry", "3");
+    rect.setAttribute("stroke", color);
+    rect.setAttribute("stroke-width", "1.5");
+    rect.setAttribute("fill", fill);
+    if (ann.hasBg) rect.setAttribute("fill-opacity", fillOpacity);
+    svg.appendChild(rect);
+    
+    const rightCap = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    rightCap.setAttribute("d", `M ${x2} ${y - 5} A 3 5 0 0 1 ${x2} ${y + 5}`);
+    rightCap.setAttribute("stroke", color);
+    rightCap.setAttribute("stroke-width", "1.5");
+    rightCap.setAttribute("fill", "none");
+    svg.appendChild(rightCap);
+  } else if (shape === "bhlh") {
+    const w = x2 - x1;
+    const xH1 = x1 + w * 0.35;
+    const xH2 = x1 + w * 0.65;
+    const loopH = isTop ? -6 : 6;
+    
+    let pathD = `M ${x1} ${y}`;
+    const waveL = 8;
+    const amp = 3.5;
+    let numH1 = Math.ceil((xH1 - x1) / waveL);
+    for (let i = 0; i < numH1; i++) {
+      const cx1 = x1 + i * waveL + waveL * 0.25;
+      const cy1 = y - amp;
+      const cx2 = x1 + i * waveL + waveL * 0.75;
+      const cy2 = y + amp;
+      const endX = Math.min(xH1, x1 + (i + 1) * waveL);
+      pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${y}`;
+    }
+    
+    const xMidLoop = (xH1 + xH2) / 2;
+    pathD += ` M ${xH1} ${y} Q ${xMidLoop} ${y + loopH} ${xH2} ${y}`;
+    
+    pathD += ` M ${xH2} ${y}`;
+    let numH2 = Math.ceil((x2 - xH2) / waveL);
+    for (let i = 0; i < numH2; i++) {
+      const cx1 = xH2 + i * waveL + waveL * 0.25;
+      const cy1 = y - amp;
+      const cx2 = xH2 + i * waveL + waveL * 0.75;
+      const cy2 = y + amp;
+      const endX = Math.min(x2, xH2 + (i + 1) * waveL);
+      pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${y}`;
+    }
+    
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathD);
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "1.5");
+    svg.appendChild(path);
+  }
+}
+
 function redrawSVGOverlays(result) {
   if (!result || !DOM.viewer) return;
   const blocks = DOM.viewer.querySelectorAll(".aln-block");
@@ -1361,65 +1709,205 @@ function redrawSVGOverlays(result) {
     const blockRect = block.getBoundingClientRect();
     if (blockRect.width === 0 || blockRect.height === 0) return;
     
-    const annRows = block.querySelectorAll(".aln-row.annotation-row");
-    annRows.forEach(rowEl => {
-      const annIndex = parseInt(rowEl.getAttribute("data-ann-index"), 10);
-      if (isNaN(annIndex)) return;
-      const ann = result.rangeAnnotations && result.rangeAnnotations[annIndex];
-      if (!ann) return;
+    const startCol = parseInt(block.getAttribute("data-start-col"), 10);
+    const endCol = parseInt(block.getAttribute("data-end-col"), 10);
+    if (isNaN(startCol) || isNaN(endCol)) return;
+    
+    if (!result.rangeAnnotations) return;
+    
+    result.rangeAnnotations.forEach((ann, annIndex) => {
+      const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
       
-      const cellElements = Array.from(rowEl.querySelectorAll(".cell"));
-      const segments = [];
-      let currentSegment = [];
-      for (const cell of cellElements) {
-        if (cell.classList.contains("ann-block-cell")) {
-          currentSegment.push(cell);
+      if (ann.type === "range") {
+        const spacerRow = block.querySelector(`.aln-row.annotation-spacer[data-ann-index="${annIndex}"]`);
+        if (!spacerRow) return;
+        
+        const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
+        if (seqRows.length === 0) return;
+        const cells = seqRows[0].querySelectorAll(".cell");
+        
+        const spacerRect = spacerRow.getBoundingClientRect();
+        const yStart = spacerRect.top - blockRect.top;
+        const yHeight = spacerRect.height;
+        
+        let yShape, yText;
+        if (ann.position === "top") {
+          yText = yStart + 10;
+          yShape = yStart + 18;
         } else {
-          if (currentSegment.length > 0) {
-            segments.push(currentSegment);
-            currentSegment = [];
+          yText = yStart + 20;
+          yShape = yStart + 10;
+        }
+        
+        ranges.forEach(r => {
+          const overlapStart = Math.max(r.start - 1, startCol);
+          const overlapEnd = Math.min(r.end - 1, endCol - 1);
+          if (overlapStart > overlapEnd) return;
+          
+          const startCell = cells[overlapStart - startCol];
+          const endCell = cells[overlapEnd - startCol];
+          if (!startCell || !endCell) return;
+          
+          const x1 = startCell.getBoundingClientRect().left - blockRect.left;
+          const x2 = endCell.getBoundingClientRect().right - blockRect.left;
+          
+          const color = ann.textColor || "#000000";
+          const label = ann.name || ann.label || "";
+          
+          // Draw translucent column background if Bg is enabled
+          if (ann.hasBg) {
+            const firstRowRect = seqRows[0].getBoundingClientRect();
+            const lastRowRect = seqRows[seqRows.length - 1].getBoundingClientRect();
+            const y1_seq = firstRowRect.top - blockRect.top;
+            const y2_seq = lastRowRect.bottom - blockRect.top;
+            
+            const fillRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            fillRect.setAttribute("x", String(x1));
+            fillRect.setAttribute("y", String(y1_seq));
+            fillRect.setAttribute("width", String(x2 - x1));
+            fillRect.setAttribute("height", String(y2_seq - y1_seq));
+            fillRect.setAttribute("fill", ann.color || "#315efb");
+            fillRect.setAttribute("fill-opacity", "0.1");
+            fillRect.setAttribute("stroke", "none");
+            svg.appendChild(fillRect);
           }
-        }
+          
+          // Draw Shape
+          drawRangeShape(svg, ann.shape || "curly", x1, x2, yShape, color, ann);
+          
+          // Draw Label Text
+          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+          text.setAttribute("x", String((x1 + x2) / 2));
+          text.setAttribute("y", String(yText));
+          text.setAttribute("text-anchor", "middle");
+          text.setAttribute("fill", color);
+          text.setAttribute("font-family", "Arial, sans-serif");
+          text.setAttribute("font-size", "10");
+          text.setAttribute("font-weight", "bold");
+          text.textContent = label;
+          svg.appendChild(text);
+        });
+      } else {
+        const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
+        if (seqRows.length === 0) return;
+        
+        ranges.forEach(r => {
+          const overlapStart = Math.max(r.start - 1, startCol);
+          const overlapEnd = Math.min(r.end - 1, endCol - 1);
+          if (overlapStart > overlapEnd) return;
+          
+          const rSeqs = r.sequences || ann.sequences;
+          const matchedRows = [];
+          for (const seqRow of seqRows) {
+            const seqName = seqRow.getAttribute("data-seq-name");
+            if (rSeqs && rSeqs.length > 0 && !rSeqs.includes("all")) {
+              if (rSeqs.includes(seqName)) {
+                matchedRows.push(seqRow);
+              }
+            } else {
+              matchedRows.push(seqRow);
+            }
+          }
+          if (matchedRows.length === 0) return;
+          
+          const firstRow = matchedRows[0];
+          const lastRow = matchedRows[matchedRows.length - 1];
+          
+          const firstCells = firstRow.querySelectorAll(".cell");
+          const lastCells = lastRow.querySelectorAll(".cell");
+          
+          const idxStart = overlapStart - startCol;
+          const idxEnd = overlapEnd - startCol;
+          
+          const startCellTop = firstCells[idxStart];
+          const endCellTop = firstCells[idxEnd];
+          const startCellBottom = lastCells[idxStart];
+          const endCellBottom = lastCells[idxEnd];
+          
+          if (!startCellTop || !endCellTop || !startCellBottom || !endCellBottom) return;
+          
+          const startRectTop = startCellTop.getBoundingClientRect();
+          const endRectTop = endCellTop.getBoundingClientRect();
+          const startRectBottom = startCellBottom.getBoundingClientRect();
+          const endRectBottom = endCellBottom.getBoundingClientRect();
+          
+          const x1 = startRectTop.left - blockRect.left;
+          const x2 = endRectTop.right - blockRect.left;
+          const y1 = startRectTop.top - blockRect.top;
+          const y2 = endRectBottom.bottom - blockRect.top;
+          
+          let oShape = ann.overlayShape || "rect";
+          let lStyle = ann.lineStyle || "solid";
+          let lWidth = ann.lineWidth || 2;
+          let fBoxes = ann.fillBoxes !== false;
+          
+          if (ann.type === "overlay") {
+            fBoxes = !!ann.hasBg;
+          } else if (ann.type === "rect-overlay") {
+            oShape = "rect"; lStyle = "solid"; lWidth = 1; fBoxes = true;
+          } else if (ann.type === "border-overlay") {
+            oShape = "rect"; lStyle = "dashed"; lWidth = 2; fBoxes = false;
+          } else if (ann.type === "line-overlay") {
+            oShape = "lines"; lStyle = "dashed"; lWidth = 1.5; fBoxes = false;
+          }
+          
+          let dasharray = "";
+          if (lStyle === "dashed") dasharray = "4,2";
+          else if (lStyle === "dotted") dasharray = "1,2";
+          
+          const fillColor = ann.color || "var(--primary)";
+          const strokeColor = (ann.type === "overlay") ? (ann.textColor || "var(--primary)") : (ann.color || "var(--primary)");
+          const labelColor = (ann.type === "overlay") ? (ann.textColor || "var(--text)") : (ann.color || "var(--text)");
+          
+          if (fBoxes) {
+            const fillRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            fillRect.setAttribute("x", String(x1));
+            fillRect.setAttribute("y", String(y1));
+            fillRect.setAttribute("width", String(x2 - x1));
+            fillRect.setAttribute("height", String(y2 - y1));
+            fillRect.setAttribute("fill", fillColor);
+            fillRect.setAttribute("fill-opacity", "0.15");
+            fillRect.setAttribute("stroke", "none");
+            svg.appendChild(fillRect);
+          }
+          
+          if (lStyle !== "none" && lWidth > 0) {
+            if (oShape === "rect") {
+              const borderRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+              borderRect.setAttribute("x", String(x1));
+              borderRect.setAttribute("y", String(y1));
+              borderRect.setAttribute("width", String(x2 - x1));
+              borderRect.setAttribute("height", String(y2 - y1));
+              borderRect.setAttribute("fill", "none");
+              borderRect.setAttribute("stroke", strokeColor);
+              borderRect.setAttribute("stroke-width", String(lWidth));
+              if (dasharray) borderRect.setAttribute("stroke-dasharray", dasharray);
+              svg.appendChild(borderRect);
+            } else if (oShape === "lines") {
+              const line1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+              line1.setAttribute("x1", String(x1));
+              line1.setAttribute("y1", String(y1));
+              line1.setAttribute("x2", String(x1));
+              line1.setAttribute("y2", String(y2));
+              line1.setAttribute("stroke", strokeColor);
+              line1.setAttribute("stroke-width", String(lWidth));
+              if (dasharray) line1.setAttribute("stroke-dasharray", dasharray);
+              
+              const line2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+              line2.setAttribute("x1", String(x2));
+              line2.setAttribute("y1", String(y1));
+              line2.setAttribute("x2", String(x2));
+              line2.setAttribute("y2", String(y2));
+              line2.setAttribute("stroke", strokeColor);
+              line2.setAttribute("stroke-width", String(lWidth));
+              if (dasharray) line2.setAttribute("stroke-dasharray", dasharray);
+              
+              svg.appendChild(line1);
+              svg.appendChild(line2);
+            }
+          }
+        });
       }
-      if (currentSegment.length > 0) {
-        segments.push(currentSegment);
-      }
-      
-      segments.forEach(segment => {
-        const startCell = segment[0];
-        const endCell = segment[segment.length - 1];
-        
-        const startRect = startCell.getBoundingClientRect();
-        const endRect = endCell.getBoundingClientRect();
-        
-        const x1 = startRect.left - blockRect.left;
-        const x2 = endRect.right - blockRect.left;
-        const y = startRect.bottom - blockRect.top;
-        
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        const h = 5;
-        const r = 3;
-        const xMid = (x1 + x2) / 2;
-        
-        let d = "";
-        if (x2 - x1 < 8) {
-          d = `M ${x1} ${y} L ${xMid} ${y + h} L ${x2} ${y}`;
-        } else {
-          d = `M ${x1} ${y} 
-               Q ${x1} ${y + h} ${x1 + r} ${y + h} 
-               L ${xMid - r} ${y + h} 
-               Q ${xMid} ${y + h} ${xMid} ${y + h + r} 
-               Q ${xMid} ${y + h} ${xMid + r} ${y + h} 
-               L ${x2 - r} ${y + h} 
-               Q ${x2} ${y + h} ${x2} ${y}`;
-        }
-        
-        path.setAttribute("d", d);
-        path.setAttribute("fill", "none");
-        path.setAttribute("stroke", ann.color || "var(--primary)");
-        path.setAttribute("stroke-width", "1.5");
-        svg.appendChild(path);
-      });
     });
   });
 }
@@ -1428,6 +1916,7 @@ function redrawSVGOverlays(result) {
 function renderAlignmentRow(name, sequence, start, end, result, rowIndex) {
   const row = document.createElement("div");
   row.className = "aln-row";
+  row.setAttribute("data-seq-name", name);
   const nameEl = document.createElement("div");
   nameEl.className = "aln-name";
   nameEl.title = name;
@@ -1509,8 +1998,9 @@ function makeCell(char, result, col, special = "", annotationObj = null) {
     
     if (inRange) {
       span.classList.add("ann-block-cell");
-      span.style.backgroundColor = annotationObj.color;
-      span.style.color = annotationObj.textColor || "#ffffff";
+      const showBg = annotationObj.hasBg !== undefined ? !!annotationObj.hasBg : (annotationObj.transparentBg === false);
+      span.style.backgroundColor = showBg ? annotationObj.color : "transparent";
+      span.style.color = annotationObj.textColor || "#000000";
     }
   }
   
@@ -1617,15 +2107,123 @@ function downloadText(filename, text, mime = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
+function svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd) {
+  let svg = "";
+  
+  const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+  const color = ann.textColor || "#000000";
+  const label = ann.name || ann.label || "";
+  const shape = ann.shape || "curly";
+  const isTop = (ann.position === "top");
+  
+  let yShape, yText;
+  if (isTop) {
+    yText = y + 7;
+    yShape = y + 14;
+  } else {
+    yText = y + 15;
+    yShape = y + 7;
+  }
+  
+  for (const r of ranges) {
+    const x1 = left + nameW + (r.start - 1) * stepW;
+    const x2 = left + nameW + r.end * stepW - currentGap;
+    
+    // Draw background highlight behind sequence columns if enabled
+    if (ann.hasBg && seqYStart !== undefined && seqYEnd !== undefined) {
+      svg += `<rect x="${x1}" y="${seqYStart}" width="${x2 - x1}" height="${seqYEnd - seqYStart}" fill="${ann.color || "#315efb"}" fill-opacity="0.1" stroke="none"/>`;
+    }
+    
+    // Draw the shape in SVG
+    if (shape === "curly" || shape === "edges" || shape === "arrow") {
+      const pathD = getAnnotationPath(shape, ann.position || "bottom", x1, x2, yShape);
+      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+    } else if (shape === "line") {
+      const pathD = `M ${x1} ${yShape} L ${x2} ${yShape} M ${x1} ${yShape - 4} L ${x1} ${yShape + 4} M ${x2} ${yShape - 4} L ${x2} ${yShape + 4}`;
+      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+    } else if (shape === "helix") {
+      let pathD = `M ${x1} ${yShape}`;
+      const waveL = 10;
+      const amp = 4;
+      const numCycles = Math.ceil((x2 - x1) / waveL);
+      for (let i = 0; i < numCycles; i++) {
+        const cx1 = x1 + i * waveL + waveL * 0.25;
+        const cy1 = yShape - amp;
+        const cx2 = x1 + i * waveL + waveL * 0.75;
+        const cy2 = yShape + amp;
+        const endX = Math.min(x2, x1 + (i + 1) * waveL);
+        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+      }
+      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+    } else if (shape === "loop") {
+      const loopH = isTop ? -8 : 8;
+      const xPart1 = x1 + (x2 - x1) / 3;
+      const xPart2 = x1 + 2 * (x2 - x1) / 3;
+      const mid1 = (x1 + xPart1) / 2;
+      const mid2 = (xPart1 + xPart2) / 2;
+      const mid3 = (xPart2 + x2) / 2;
+      const pathD = `M ${x1} ${yShape} Q ${mid1} ${yShape + loopH} ${xPart1} ${yShape} Q ${mid2} ${yShape + loopH} ${xPart2} ${yShape} Q ${mid3} ${yShape + loopH} ${x2} ${yShape}`;
+      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+    } else if (shape === "cylinder") {
+      const fill = ann.hasBg ? (ann.color || "#315efb") : "none";
+      const fillOpacity = ann.hasBg ? ` fill-opacity="0.3"` : "";
+      
+      svg += `<ellipse cx="${x1}" cy="${yShape}" rx="3" ry="5" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
+      svg += `<rect x="${x1}" y="${yShape - 5}" width="${x2 - x1}" height="10" rx="3" ry="3" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
+      svg += `<path d="M ${x2} ${yShape - 5} A 3 5 0 0 1 ${x2} ${yShape + 5}" stroke="${color}" stroke-width="1.5" fill="none"/>`;
+    } else if (shape === "bhlh") {
+      const w = x2 - x1;
+      const xH1 = x1 + w * 0.35;
+      const xH2 = x1 + w * 0.65;
+      
+      let pathD = `M ${x1} ${yShape}`;
+      const waveL = 8;
+      const amp = 3.5;
+      let numH1 = Math.ceil((xH1 - x1) / waveL);
+      for (let i = 0; i < numH1; i++) {
+        const cx1 = x1 + i * waveL + waveL * 0.25;
+        const cy1 = yShape - amp;
+        const cx2 = x1 + i * waveL + waveL * 0.75;
+        const cy2 = yShape + amp;
+        const endX = Math.min(xH1, x1 + (i + 1) * waveL);
+        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+      }
+      
+      const xMidLoop = (xH1 + xH2) / 2;
+      const loopH = isTop ? -6 : 6;
+      pathD += ` M ${xH1} ${yShape} Q ${xMidLoop} ${yShape + loopH} ${xH2} ${yShape}`;
+      
+      pathD += ` M ${xH2} ${yShape}`;
+      let numH2 = Math.ceil((x2 - xH2) / waveL);
+      for (let i = 0; i < numH2; i++) {
+        const cx1 = xH2 + i * waveL + waveL * 0.25;
+        const cy1 = yShape - amp;
+        const cx2 = xH2 + i * waveL + waveL * 0.75;
+        const cy2 = yShape + amp;
+        const endX = Math.min(x2, xH2 + (i + 1) * waveL);
+        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+      }
+      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+    }
+    
+    svg += `<text x="${(x1 + x2) / 2}" y="${yText}" text-anchor="middle" fill="${color}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">${esc(label)}</text>`;
+  }
+  return svg;
+}
+
 function makeAlignmentSVG(result) {
   const settings = result.settings;
   const cellW = 14, cellH = 18, nameW = 190, top = 36, left = 12;
   const stepW = cellW + currentGap;
   const stepH = cellH + currentGap;
   const len = result.aligned[0]?.length || 0;
-  const annCount = result.rangeAnnotations ? result.rangeAnnotations.length : 0;
+  const rangeTrackCount = result.rangeAnnotations ? result.rangeAnnotations.filter(a => a.type === "range").length : 0;
   const hasRuler = settings.showColumnNumbers ? 1 : 0;
-  const rows = result.aligned.length + annCount + (settings.showConsensus ? 1 : 0) + (settings.showSimilarity ? 1 : 0) + hasRuler;
+  const topRangeCount = result.rangeAnnotations ? result.rangeAnnotations.filter(a => a.type === "range" && a.position === "top").length : 0;
+  const seqYStart = top + (hasRuler + topRangeCount) * stepH;
+  const seqYEnd = seqYStart + result.aligned.length * stepH;
+  
+  const rows = result.aligned.length + rangeTrackCount + (settings.showConsensus ? 1 : 0) + (settings.showSimilarity ? 1 : 0) + hasRuler;
   const width = Math.max(900, left + nameW + len * stepW + 80);
   const height = top + rows * stepH + 70;
   const esc = escapeHtml;
@@ -1655,9 +2253,20 @@ function makeAlignmentSVG(result) {
     y += stepH;
   }
   
+  // Render Top Range Annotations (Above alignment rows)
+  if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
+    for (const ann of result.rangeAnnotations) {
+      if (ann.type !== "range" || ann.position !== "top") continue;
+      svg += svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
+      y += stepH;
+    }
+  }
+  
   // Render sequence rows with Approach 2 residue annotations
+  const seqYMap = new Map();
   for (let r = 0; r < result.aligned.length; r++) {
     const name = result.names[r];
+    seqYMap.set(name, y);
     const sequence = result.aligned[r];
     svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" fill="#334155">${esc(name.slice(0, 26))}</text>`;
     let unalignedPos = 0;
@@ -1670,44 +2279,79 @@ function makeAlignmentSVG(result) {
     y += stepH;
   }
   
-  // Render Approach 1 range annotations
+  // Render overlays (consolidated and custom styling) on top of sequence rows in SVG export
   if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
     for (const ann of result.rangeAnnotations) {
-      svg += `<text x="${left}" y="${y + 13}" font-family="Arial" font-size="11" font-weight="700" fill="#64748b">${esc((ann.name || ann.label || "").slice(0, 26))}</text>`;
+      if (ann.type === "range") continue; // Handled separately
       
-      const annotSeq = Array(len).fill(" ");
-      if (ann.ranges && ann.ranges.length > 0) {
-        for (const r of ann.ranges) {
-          const W = r.end - r.start + 1;
-          const segmentStr = formatSimpleLabel(W, ann.label);
-          for (let i = 0; i < W; i++) {
-            annotSeq[r.start - 1 + i] = segmentStr[i];
-          }
-        }
-      } else if (ann.start && ann.end) {
-        const W = ann.end - ann.start + 1;
-        const segmentStr = formatSimpleLabel(W, ann.label);
-        for (let i = 0; i < W; i++) {
-          annotSeq[ann.start - 1 + i] = segmentStr[i];
-        }
-      }
-
-      for (let c = 0; c < len; c++) {
-        let isAnnotated = false;
-        if (ann.ranges && ann.ranges.length > 0) {
-          for (const r of ann.ranges) {
-            if (c >= r.start - 1 && c <= r.end - 1) {
-              isAnnotated = true;
-              break;
+      const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+      for (const r of ranges) {
+        let yStart = seqYStart;
+        let yEnd = seqYEnd;
+        const rSeqs = r.sequences || ann.sequences;
+        if (rSeqs && rSeqs.length > 0 && !rSeqs.includes("all")) {
+          let minY = Infinity;
+          let maxY = -Infinity;
+          for (const name of rSeqs) {
+            if (seqYMap.has(name)) {
+              const rowY = seqYMap.get(name);
+              minY = Math.min(minY, rowY);
+              maxY = Math.max(maxY, rowY + stepH);
             }
           }
-        } else if (ann.start && ann.end) {
-          if (c >= ann.start - 1 && c <= ann.end - 1) {
-            isAnnotated = true;
+          if (minY !== Infinity) {
+            yStart = minY;
+            yEnd = maxY;
           }
         }
-        svg += svgAnnotationCell(annotSeq[c], left + nameW + c * stepW, y, cellW, cellH, isAnnotated, ann.color, ann.textColor || "#ffffff");
+        
+        const x1 = left + nameW + (r.start - 1) * stepW;
+        const x2 = left + nameW + r.end * stepW - currentGap;
+        
+        let oShape = ann.overlayShape || "rect";
+        let lStyle = ann.lineStyle || "solid";
+        let lWidth = ann.lineWidth || 2;
+        let fBoxes = ann.fillBoxes !== false;
+        
+        if (ann.type === "overlay") {
+          fBoxes = !!ann.hasBg;
+        } else if (ann.type === "rect-overlay") {
+          oShape = "rect"; lStyle = "solid"; lWidth = 1; fBoxes = true;
+        } else if (ann.type === "border-overlay") {
+          oShape = "rect"; lStyle = "dashed"; lWidth = 2; fBoxes = false;
+        } else if (ann.type === "line-overlay") {
+          oShape = "lines"; lStyle = "dashed"; lWidth = 1.5; fBoxes = false;
+        }
+        
+        let dasharray = "";
+        if (lStyle === "dashed") dasharray = "4,2";
+        else if (lStyle === "dotted") dasharray = "1,2";
+        
+        const strokeColor = (ann.type === "overlay") ? (ann.textColor || "#000000") : (ann.color || "#000000");
+        const labelColor = (ann.type === "overlay") ? (ann.textColor || "#000000") : (ann.color || "#000000");
+        
+        if (fBoxes) {
+          svg += `<rect x="${x1}" y="${yStart}" width="${x2 - x1}" height="${yEnd - yStart}" fill="${ann.color}" fill-opacity="0.15" stroke="none"/>`;
+        }
+        
+        if (lStyle !== "none" && lWidth > 0) {
+          const dashAttr = dasharray ? ` stroke-dasharray="${dasharray}"` : "";
+          if (oShape === "rect") {
+            svg += `<rect x="${x1}" y="${yStart}" width="${x2 - x1}" height="${yEnd - yStart}" fill="none" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+          } else if (oShape === "lines") {
+            svg += `<line x1="${x1}" y1="${yStart}" x2="${x1}" y2="${yEnd}" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+            svg += `<line x1="${x2}" y1="${yStart}" x2="${x2}" y2="${yEnd}" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+          }
+        }
       }
+    }
+  }
+  
+  // Render Bottom Range Annotations (Below alignment rows)
+  if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
+    for (const ann of result.rangeAnnotations) {
+      if (ann.type !== "range" || ann.position === "top") continue;
+      svg += svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
       y += stepH;
     }
   }
@@ -1733,12 +2377,13 @@ function svgRulerCell(ch, x, y, w, h) {
     `<text x="${x + w / 2}" y="${y + 13}" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#64748b">${escapeHtml(label)}</text>`;
 }
 
-function svgAnnotationCell(ch, x, y, w, h, isAnnotated, color, textColor) {
-  const bg = isAnnotated ? color : "#ffffff";
+function svgAnnotationCell(ch, x, y, w, h, isAnnotated, color, textColor, showBg) {
+  const isTrans = (isAnnotated && !showBg);
+  const bg = isAnnotated ? (isTrans ? "none" : color) : "#ffffff";
   const fg = isAnnotated ? textColor : "#ffffff00";
-  const stroke = isAnnotated ? color : "transparent";
+  const stroke = isAnnotated ? (isTrans ? "none" : color) : "transparent";
   const label = ch === " " ? "" : ch;
-  const sw = isAnnotated ? 0.5 : 0;
+  const sw = (isAnnotated && !isTrans) ? 0.5 : 0;
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${currentRoundness}" fill="${bg}" stroke="${stroke}" stroke-width="${sw}"/>` +
     `<text x="${x + w / 2}" y="${y + 13}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="${fg}">${escapeHtml(label)}</text>`;
 }
@@ -1908,19 +2553,65 @@ DOM.downloadSvgBtn.addEventListener("click", () => {
 });
 
 // Annotations Form Event Listeners
-DOM.annTypeSelect.addEventListener("change", () => {
-  if (DOM.annTypeSelect.value === "range") {
+function updateBgColorVisibility() {
+  if (DOM.annHasBg && DOM.annBgColorLabel) {
+    if (DOM.annHasBg.checked) {
+      DOM.annBgColorLabel.style.display = "flex";
+    } else {
+      DOM.annBgColorLabel.style.display = "none";
+    }
+  }
+}
+
+function updateAnnotationFormLayout() {
+  const typeVal = DOM.annTypeSelect.value;
+  
+  // Dynamically change color label text
+  const textNode = Array.from(DOM.annTextColorLabel.childNodes).find(n => n.nodeType === 3);
+  if (textNode) {
+    textNode.nodeValue = (typeVal === "range") ? "Text Color " : "Line Color ";
+  }
+  DOM.annTextColorInput.title = (typeVal === "range") ? "Text Color" : "Line Color";
+  
+  const isOverlay = (typeVal === "overlay" || typeVal === "rect-overlay" || typeVal === "border-overlay" || typeVal === "line-overlay");
+  const isRange = (typeVal === "range");
+  
+  if (isRange) {
     DOM.rangeInputsRow.style.display = "flex";
     DOM.residueInputsRow.style.display = "none";
+    DOM.annNameInputLabel.style.display = "flex";
     DOM.annTextColorLabel.style.display = "flex";
     DOM.annTrackLabelLabel.style.display = "flex";
+    DOM.annLayoutOptionsRow.style.display = "flex";
+    DOM.annOverlayOptionsRow.style.display = "none";
+  } else if (isOverlay) {
+    DOM.rangeInputsRow.style.display = "flex";
+    DOM.residueInputsRow.style.display = "none";
+    DOM.annNameInputLabel.style.display = "none";
+    DOM.annTextColorLabel.style.display = "flex";
+    DOM.annTrackLabelLabel.style.display = "none";
+    DOM.annLayoutOptionsRow.style.display = "none";
+    DOM.annOverlayOptionsRow.style.display = "flex";
   } else {
     DOM.rangeInputsRow.style.display = "none";
     DOM.residueInputsRow.style.display = "flex";
+    DOM.annNameInputLabel.style.display = "flex";
     DOM.annTextColorLabel.style.display = "none";
     DOM.annTrackLabelLabel.style.display = "none";
+    DOM.annLayoutOptionsRow.style.display = "none";
+    DOM.annOverlayOptionsRow.style.display = "none";
   }
-});
+  
+  const labelDisplay = isOverlay ? "flex" : "none";
+  if (DOM.annOverlaySeqsLabel1) DOM.annOverlaySeqsLabel1.style.display = labelDisplay;
+  if (DOM.annOverlaySeqsLabel2) DOM.annOverlaySeqsLabel2.style.display = labelDisplay;
+  if (DOM.annOverlaySeqsLabel3) DOM.annOverlaySeqsLabel3.style.display = labelDisplay;
+  if (DOM.annOverlaySeqsLabel4) DOM.annOverlaySeqsLabel4.style.display = labelDisplay;
+  
+  updateBgColorVisibility();
+}
+DOM.annTypeSelect.addEventListener("change", updateAnnotationFormLayout);
+DOM.annHasBg.addEventListener("change", updateBgColorVisibility);
 
 DOM.annHasSeg2.addEventListener("change", () => {
   if (DOM.annHasSeg2.checked) {
@@ -1967,19 +2658,23 @@ DOM.annHasSeg4.addEventListener("change", () => {
 DOM.cancelAnnBtn.addEventListener("click", cancelEditMode);
 
 DOM.addAnnBtn.addEventListener("click", () => {
-  const name = DOM.annNameInput.value.trim();
+  let name = DOM.annNameInput.value.trim();
   const label = DOM.annLabelInput.value.trim();
   const color = DOM.annColorInput.value;
   const type = DOM.annTypeSelect.value;
   
   if (!name) {
-    alert("Please enter a Feature Name.");
-    return;
+    if (type === "range") {
+      alert("Please enter a Feature Name.");
+      return;
+    } else {
+      name = "Highlight";
+    }
   }
   
   let newAnn = { type, name, label, color };
   
-  if (type === "range") {
+  if (type === "range" || type === "overlay" || type === "rect-overlay" || type === "border-overlay" || type === "line-overlay") {
     const start = parseInt(DOM.annStartCol.value, 10);
     const end = parseInt(DOM.annEndCol.value, 10);
     if (isNaN(start) || start <= 0 || isNaN(end) || end <= 0) {
@@ -1991,7 +2686,8 @@ DOM.addAnnBtn.addEventListener("click", () => {
       return;
     }
     
-    const ranges = [{ start, end }];
+    const getSeqs = (sel) => sel ? Array.from(sel.selectedOptions).map(opt => opt.value) : ["all"];
+    const ranges = [{ start, end, sequences: getSeqs(DOM.annOverlaySeqsSelect1) }];
     
     if (DOM.annHasSeg2.checked) {
       const start2 = parseInt(DOM.annStartCol2.value, 10);
@@ -2004,7 +2700,7 @@ DOM.addAnnBtn.addEventListener("click", () => {
         alert("Start column 2 must be less than or equal to end column 2.");
         return;
       }
-      ranges.push({ start: start2, end: end2 });
+      ranges.push({ start: start2, end: end2, sequences: getSeqs(DOM.annOverlaySeqsSelect2) });
       
       if (DOM.annHasSeg3.checked) {
         const start3 = parseInt(DOM.annStartCol3.value, 10);
@@ -2017,7 +2713,7 @@ DOM.addAnnBtn.addEventListener("click", () => {
           alert("Start column 3 must be less than or equal to end column 3.");
           return;
         }
-        ranges.push({ start: start3, end: end3 });
+        ranges.push({ start: start3, end: end3, sequences: getSeqs(DOM.annOverlaySeqsSelect3) });
         
         if (DOM.annHasSeg4.checked) {
           const start4 = parseInt(DOM.annStartCol4.value, 10);
@@ -2030,15 +2726,28 @@ DOM.addAnnBtn.addEventListener("click", () => {
             alert("Start column 4 must be less than or equal to end column 4.");
             return;
           }
-          ranges.push({ start: start4, end: end4 });
+          ranges.push({ start: start4, end: end4, sequences: getSeqs(DOM.annOverlaySeqsSelect4) });
         }
       }
     }
     
     newAnn.ranges = ranges;
     newAnn.textColor = DOM.annTextColorInput.value;
+    newAnn.hasBg = DOM.annHasBg.checked;
     newAnn.start = start;
     newAnn.end = end;
+    
+    if (type === "range") {
+      newAnn.position = DOM.annPositionGroup.querySelector("button.active").getAttribute("data-value");
+      newAnn.shape = DOM.annShapeSelect.value;
+    } else {
+      newAnn.position = "top"; // Default position for overlay labels
+      newAnn.overlayShape = DOM.annOverlayShapeGroup.querySelector("button.active").getAttribute("data-value");
+      newAnn.lineStyle = DOM.annLineStyleGroup.querySelector("button.active").getAttribute("data-value");
+      newAnn.lineWidth = Number(DOM.annLineWidthGroup.querySelector("button.active").getAttribute("data-value"));
+      newAnn.fillBoxes = DOM.annFillBoxes.checked;
+      newAnn.sequences = ranges[0].sequences || ["all"];
+    }
   } else {
     const sequence = DOM.annSeqSelect.value;
     const positionInput = DOM.annResPos.value.trim();
@@ -2102,6 +2811,16 @@ applyGap();
 renderColorCustomizer(null);
 updateInputSummary();
 onAnnotationsUpdated();
+
+initSegmentedControl("annPositionGroup");
+initSegmentedControl("annOverlayShapeGroup");
+initSegmentedControl("annLineStyleGroup");
+initSegmentedControl("annLineWidthGroup");
+
+makeSelectToggleable(DOM.annOverlaySeqsSelect1);
+makeSelectToggleable(DOM.annOverlaySeqsSelect2);
+makeSelectToggleable(DOM.annOverlaySeqsSelect3);
+makeSelectToggleable(DOM.annOverlaySeqsSelect4);
 
 window.addEventListener("resize", () => {
   if (currentResult) {

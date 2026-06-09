@@ -101,10 +101,46 @@ body {
 .app-header h1 {
   margin: 0 0 4px;
   font-size: clamp(1.8rem, 3vw, 2.7rem);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.app-logo-link {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+.app-logo-link:hover .app-logo {
+  color: #60a5fa;
+  transform: scale(1.15);
+}
+.app-logo {
+  color: #38bdf8; /* Vibrant light cyan/blue */
+  font-size: 1.05em;
+  line-height: 1;
+  user-select: none;
+  transition: color 0.2s ease, transform 0.2s ease;
 }
 .app-header p {
   margin: 0;
   color: #dbeafe;
+}
+.app-author {
+  font-size: 0.85rem;
+  color: #94a3b8; /* Slate-400 */
+  margin-top: 8px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-author::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 1px;
+  background-color: #475569; /* Slate-600 */
 }
 .header-actions {
   display: flex;
@@ -764,6 +800,11 @@ footer {
   color: #c084fc;
   border: 1px solid rgba(168, 85, 247, 0.3);
 }
+.ann-badge.badge-overlay {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
 .ann-badge.badge-residue {
   background: rgba(249, 115, 22, 0.15);
   color: #fb923c;
@@ -916,4 +957,42 @@ footer {
     height: 18px;
     font-size: 10px;
   }
+}
+.segmented-control {
+  display: flex;
+  gap: 2px;
+  background: var(--panel-2);
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 0;
+  width: 100%;
+}
+.segmented-control button {
+  flex: 1;
+  border: none;
+  padding: 6px 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none !important;
+}
+.segmented-control button.active {
+  background: var(--primary);
+  color: white;
+}
+.segmented-control button:hover:not(.active) {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Range Track Annotation Spacer Row Styles */
+.aln-row.annotation-spacer {
+  height: 28px;
+  background-color: transparent !important;
+}
+.aln-row.annotation-spacer:hover {
+  background-color: transparent !important;
+}
+.annotation-spacer-name {
+  border-right: none !important;
 }
