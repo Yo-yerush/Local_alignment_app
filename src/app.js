@@ -1473,10 +1473,41 @@ function renderStats(result) {
   }
 }
 
-function renderRangeAnnotationRow(ann, annIndex, start, end, len, result) {
+function packAnnotations(annotations, position) {
+  const filtered = annotations.filter(a => a.type === "range" && (position === "top" ? a.position === "top" : a.position !== "top"));
+  filtered.sort((a, b) => a.start - b.start);
+  const tracks = [];
+  
+  filtered.forEach(ann => {
+    let placed = false;
+    for (const track of tracks) {
+      const hasOverlap = track.some(existing => {
+        const ranges1 = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+        const ranges2 = existing.ranges && existing.ranges.length > 0 ? existing.ranges : [{ start: existing.start, end: existing.end }];
+        return ranges1.some(r1 => 
+          ranges2.some(r2 => 
+            Math.max(r1.start, r2.start) <= Math.min(r1.end, r2.end)
+          )
+        );
+      });
+      if (!hasOverlap) {
+        track.push(ann);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) {
+      tracks.push([ann]);
+    }
+  });
+  return tracks;
+}
+
+function renderRangeAnnotationRow(position, trackIndex, start, end, len, result) {
   const row = document.createElement("div");
   row.className = "aln-row annotation-spacer";
-  row.setAttribute("data-ann-index", annIndex);
+  row.setAttribute("data-ann-position", position);
+  row.setAttribute("data-track-index", trackIndex);
   
   const nameEl = document.createElement("div");
   nameEl.className = "aln-name annotation-spacer-name";
@@ -1526,13 +1557,10 @@ function renderAlignmentViewer(result) {
     }
     
     // Render Top Range Annotations (Above alignment rows)
-    if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
-      result.rangeAnnotations.forEach((ann, annIndex) => {
-        if (ann.type === "range" && ann.position === "top") {
-          block.appendChild(renderRangeAnnotationRow(ann, annIndex, start, end, len, result));
-        }
-      });
-    }
+    const topTracks = packAnnotations(result.rangeAnnotations || [], "top");
+    topTracks.forEach((track, trackIndex) => {
+      block.appendChild(renderRangeAnnotationRow("top", trackIndex, start, end, len, result));
+    });
     
     // Render sequence rows
     for (let row = 0; row < result.aligned.length; row++) {
@@ -1540,13 +1568,10 @@ function renderAlignmentViewer(result) {
     }
     
     // Render Bottom Range Annotations (Below alignment rows)
-    if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
-      result.rangeAnnotations.forEach((ann, annIndex) => {
-        if (ann.type === "range" && ann.position !== "top") {
-          block.appendChild(renderRangeAnnotationRow(ann, annIndex, start, end, len, result));
-        }
-      });
-    }
+    const bottomTracks = packAnnotations(result.rangeAnnotations || [], "bottom");
+    bottomTracks.forEach((track, trackIndex) => {
+      block.appendChild(renderRangeAnnotationRow("bottom", trackIndex, start, end, len, result));
+    });
     
     if (result.settings.showConsensus) {
       let cons = "";
@@ -1565,6 +1590,93 @@ function renderAlignmentViewer(result) {
   redrawSVGOverlays(result);
 }
 
+function drawLoopConnector(svg, x1, y, x2, isTop = false, options = {}) {
+  const dx = x2 - x1;
+  const absDx = Math.abs(dx);
+  const glyph = "⅏";
+  const glyphSize = options.glyphSize || 11;
+  const spacing = options.spacing || 12;
+  const color = options.color || "black";
+  const font = options.font || "serif";
+
+  const pad = glyphSize / 2;
+  let nLoops;
+  let startX, endX;
+  
+  if (absDx <= pad * 2) {
+    nLoops = 1;
+    startX = x1 + dx / 2;
+    endX = startX;
+  } else {
+    startX = x1 + (dx > 0 ? pad : -pad);
+    endX = x2 - (dx > 0 ? pad : -pad);
+    const availableDx = Math.abs(endX - startX);
+    nLoops = Math.max(1, Math.floor(availableDx / spacing) + 1);
+  }
+
+  for (let i = 0; i < nLoops; i++) {
+    const t = nLoops === 1 ? 0.5 : i / (nLoops - 1);
+    const x = startX + (endX - startX) * t;
+
+    const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    text.setAttribute("x", "0");
+    text.setAttribute("y", "0");
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("dominant-baseline", "central");
+    text.setAttribute("alignment-baseline", "middle");
+    text.setAttribute("fill", color);
+    text.setAttribute("font-size", String(glyphSize));
+    text.setAttribute("font-family", font);
+
+    if (isTop) {
+      text.setAttribute("transform", `translate(${x}, ${y})`);
+    } else {
+      text.setAttribute("transform", `translate(${x}, ${y}) scale(1, -1)`);
+    }
+
+    text.textContent = glyph;
+    svg.appendChild(text);
+  }
+}
+
+function svgLoopConnector(x1, y, x2, isTop = false, options = {}) {
+  const dx = x2 - x1;
+  const absDx = Math.abs(dx);
+  const glyph = "⅏";
+  const glyphSize = options.glyphSize || 11;
+  const spacing = options.spacing || 12;
+  const color = options.color || "black";
+  const font = options.font || "serif";
+
+  const pad = glyphSize / 2;
+  let nLoops;
+  let startX, endX;
+  
+  if (absDx <= pad * 2) {
+    nLoops = 1;
+    startX = x1 + dx / 2;
+    endX = startX;
+  } else {
+    startX = x1 + (dx > 0 ? pad : -pad);
+    endX = x2 - (dx > 0 ? pad : -pad);
+    const availableDx = Math.abs(endX - startX);
+    nLoops = Math.max(1, Math.floor(availableDx / spacing) + 1);
+  }
+
+  let str = "";
+  for (let i = 0; i < nLoops; i++) {
+    const t = nLoops === 1 ? 0.5 : i / (nLoops - 1);
+    const x = startX + (endX - startX) * t;
+
+    const transform = isTop 
+      ? `translate(${x}, ${y})` 
+      : `translate(${x}, ${y}) scale(1, -1)`;
+
+    str += `<text x="0" y="0" text-anchor="middle" dominant-baseline="central" alignment-baseline="middle" fill="${color}" font-size="${glyphSize}" font-family="${font}" transform="${transform}">${glyph}</text>`;
+  }
+  return str;
+}
+
 function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
   const isTop = (ann.position === "top");
   const xMid = (x1 + x2) / 2;
@@ -1578,7 +1690,7 @@ function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
     path.setAttribute("stroke-width", "1.5");
     svg.appendChild(path);
   } else if (shape === "line") {
-    const pathD = `M ${x1} ${y} L ${x2} ${y} M ${x1} ${y - 4} L ${x1} ${y + 4} M ${x2} ${y - 4} L ${x2} ${y + 4}`;
+    const pathD = `M ${x1} ${y} L ${x2} ${y}`;
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
     path.setAttribute("d", pathD);
     path.setAttribute("fill", "none");
@@ -1605,19 +1717,11 @@ function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
     path.setAttribute("stroke-width", "1.5");
     svg.appendChild(path);
   } else if (shape === "loop") {
-    const loopH = isTop ? -8 : 8;
-    const xPart1 = x1 + (x2 - x1) / 3;
-    const xPart2 = x1 + 2 * (x2 - x1) / 3;
-    const mid1 = (x1 + xPart1) / 2;
-    const mid2 = (xPart1 + xPart2) / 2;
-    const mid3 = (xPart2 + x2) / 2;
-    const pathD = `M ${x1} ${y} Q ${mid1} ${y + loopH} ${xPart1} ${y} Q ${mid2} ${y + loopH} ${xPart2} ${y} Q ${mid3} ${y + loopH} ${x2} ${y}`;
-    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    path.setAttribute("d", pathD);
-    path.setAttribute("fill", "none");
-    path.setAttribute("stroke", color);
-    path.setAttribute("stroke-width", "1.5");
-    svg.appendChild(path);
+    drawLoopConnector(svg, x1, y, x2, isTop, {
+      glyphSize: 18,
+      spacing: 16,
+      color: color
+    });
   } else if (shape === "cylinder") {
     const fill = ann.hasBg ? (ann.color || "#315efb") : "none";
     const fillOpacity = ann.hasBg ? "0.3" : "0";
@@ -1656,7 +1760,6 @@ function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
     const w = x2 - x1;
     const xH1 = x1 + w * 0.35;
     const xH2 = x1 + w * 0.65;
-    const loopH = isTop ? -6 : 6;
     
     let pathD = `M ${x1} ${y}`;
     const waveL = 8;
@@ -1670,9 +1773,6 @@ function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
       const endX = Math.min(xH1, x1 + (i + 1) * waveL);
       pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${y}`;
     }
-    
-    const xMidLoop = (xH1 + xH2) / 2;
-    pathD += ` M ${xH1} ${y} Q ${xMidLoop} ${y + loopH} ${xH2} ${y}`;
     
     pathD += ` M ${xH2} ${y}`;
     let numH2 = Math.ceil((x2 - xH2) / waveL);
@@ -1691,6 +1791,12 @@ function drawRangeShape(svg, shape, x1, x2, y, color, ann) {
     path.setAttribute("stroke", color);
     path.setAttribute("stroke-width", "1.5");
     svg.appendChild(path);
+    
+    drawLoopConnector(svg, xH1, y, xH2, isTop, {
+      glyphSize: 11,
+      spacing: 12,
+      color: color
+    });
   }
 }
 
@@ -1715,11 +1821,12 @@ function redrawSVGOverlays(result) {
     
     if (!result.rangeAnnotations) return;
     
-    result.rangeAnnotations.forEach((ann, annIndex) => {
-      const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
-      
-      if (ann.type === "range") {
-        const spacerRow = block.querySelector(`.aln-row.annotation-spacer[data-ann-index="${annIndex}"]`);
+    const topTracks = packAnnotations(result.rangeAnnotations, "top");
+    const bottomTracks = packAnnotations(result.rangeAnnotations, "bottom");
+    
+    const drawTrack = (tracks, position) => {
+      tracks.forEach((track, trackIndex) => {
+        const spacerRow = block.querySelector(`.aln-row.annotation-spacer[data-ann-position="${position}"][data-track-index="${trackIndex}"]`);
         if (!spacerRow) return;
         
         const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
@@ -1731,7 +1838,7 @@ function redrawSVGOverlays(result) {
         const yHeight = spacerRect.height;
         
         let yShape, yText;
-        if (ann.position === "top") {
+        if (position === "top") {
           yText = yStart + 10;
           yShape = yStart + 18;
         } else {
@@ -1739,59 +1846,70 @@ function redrawSVGOverlays(result) {
           yShape = yStart + 10;
         }
         
-        ranges.forEach(r => {
-          const overlapStart = Math.max(r.start - 1, startCol);
-          const overlapEnd = Math.min(r.end - 1, endCol - 1);
-          if (overlapStart > overlapEnd) return;
-          
-          const startCell = cells[overlapStart - startCol];
-          const endCell = cells[overlapEnd - startCol];
-          if (!startCell || !endCell) return;
-          
-          const x1 = startCell.getBoundingClientRect().left - blockRect.left;
-          const x2 = endCell.getBoundingClientRect().right - blockRect.left;
-          
-          const color = ann.textColor || "#000000";
-          const label = ann.name || ann.label || "";
-          
-          // Draw translucent column background if Bg is enabled
-          if (ann.hasBg) {
-            const firstRowRect = seqRows[0].getBoundingClientRect();
-            const lastRowRect = seqRows[seqRows.length - 1].getBoundingClientRect();
-            const y1_seq = firstRowRect.top - blockRect.top;
-            const y2_seq = lastRowRect.bottom - blockRect.top;
+        track.forEach(ann => {
+          const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+          ranges.forEach(r => {
+            const overlapStart = Math.max(r.start - 1, startCol);
+            const overlapEnd = Math.min(r.end - 1, endCol - 1);
+            if (overlapStart > overlapEnd) return;
             
-            const fillRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-            fillRect.setAttribute("x", String(x1));
-            fillRect.setAttribute("y", String(y1_seq));
-            fillRect.setAttribute("width", String(x2 - x1));
-            fillRect.setAttribute("height", String(y2_seq - y1_seq));
-            fillRect.setAttribute("fill", ann.color || "#315efb");
-            fillRect.setAttribute("fill-opacity", "0.1");
-            fillRect.setAttribute("stroke", "none");
-            svg.appendChild(fillRect);
-          }
-          
-          // Draw Shape
-          drawRangeShape(svg, ann.shape || "curly", x1, x2, yShape, color, ann);
-          
-          // Draw Label Text
-          const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
-          text.setAttribute("x", String((x1 + x2) / 2));
-          text.setAttribute("y", String(yText));
-          text.setAttribute("text-anchor", "middle");
-          text.setAttribute("fill", color);
-          text.setAttribute("font-family", "Arial, sans-serif");
-          text.setAttribute("font-size", "10");
-          text.setAttribute("font-weight", "bold");
-          text.textContent = label;
-          svg.appendChild(text);
+            const startCell = cells[overlapStart - startCol];
+            const endCell = cells[overlapEnd - startCol];
+            if (!startCell || !endCell) return;
+            
+            const x1 = startCell.getBoundingClientRect().left - blockRect.left;
+            const x2 = endCell.getBoundingClientRect().right - blockRect.left;
+            
+            const color = ann.textColor || "#000000";
+            const label = ann.name || ann.label || "";
+            
+            // Draw translucent column background if Bg is enabled
+            if (ann.hasBg) {
+              const firstRowRect = seqRows[0].getBoundingClientRect();
+              const lastRowRect = seqRows[seqRows.length - 1].getBoundingClientRect();
+              const y1_seq = firstRowRect.top - blockRect.top;
+              const y2_seq = lastRowRect.bottom - blockRect.top;
+              
+              const fillRect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+              fillRect.setAttribute("x", String(x1));
+              fillRect.setAttribute("y", String(y1_seq));
+              fillRect.setAttribute("width", String(x2 - x1));
+              fillRect.setAttribute("height", String(y2_seq - y1_seq));
+              fillRect.setAttribute("fill", ann.color || "#315efb");
+              fillRect.setAttribute("fill-opacity", "0.1");
+              fillRect.setAttribute("stroke", "none");
+              svg.appendChild(fillRect);
+            }
+            
+            // Draw Shape
+            drawRangeShape(svg, ann.shape || "curly", x1, x2, yShape, color, ann);
+            
+            // Draw Label Text
+            const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            text.setAttribute("x", String((x1 + x2) / 2));
+            text.setAttribute("y", String(yText));
+            text.setAttribute("text-anchor", "middle");
+            text.setAttribute("fill", color);
+            text.setAttribute("font-family", "Arial, sans-serif");
+            text.setAttribute("font-size", "10");
+            text.setAttribute("font-weight", "bold");
+            text.textContent = label;
+            svg.appendChild(text);
+          });
         });
-      } else {
-        const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
-        if (seqRows.length === 0) return;
-        
-        ranges.forEach(r => {
+      });
+    };
+    
+    drawTrack(topTracks, "top");
+    drawTrack(bottomTracks, "bottom");
+    
+    result.rangeAnnotations.forEach(ann => {
+      if (ann.type === "range") return;
+      const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+      const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
+      if (seqRows.length === 0) return;
+      
+      ranges.forEach(r => {
           const overlapStart = Math.max(r.start - 1, startCol);
           const overlapEnd = Math.min(r.end - 1, endCol - 1);
           if (overlapStart > overlapEnd) return;
@@ -1907,9 +2025,8 @@ function redrawSVGOverlays(result) {
             }
           }
         });
-      }
+      });
     });
-  });
 }
 
 
@@ -2107,107 +2224,108 @@ function downloadText(filename, text, mime = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
-function svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd) {
+function svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd) {
   let svg = "";
   
-  const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
-  const color = ann.textColor || "#000000";
-  const label = ann.name || ann.label || "";
-  const shape = ann.shape || "curly";
-  const isTop = (ann.position === "top");
-  
-  let yShape, yText;
-  if (isTop) {
-    yText = y + 7;
-    yShape = y + 14;
-  } else {
-    yText = y + 15;
-    yShape = y + 7;
-  }
-  
-  for (const r of ranges) {
-    const x1 = left + nameW + (r.start - 1) * stepW;
-    const x2 = left + nameW + r.end * stepW - currentGap;
+  track.forEach(ann => {
+    const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+    const color = ann.textColor || "#000000";
+    const label = ann.name || ann.label || "";
+    const shape = ann.shape || "curly";
+    const isTop = (ann.position === "top");
     
-    // Draw background highlight behind sequence columns if enabled
-    if (ann.hasBg && seqYStart !== undefined && seqYEnd !== undefined) {
-      svg += `<rect x="${x1}" y="${seqYStart}" width="${x2 - x1}" height="${seqYEnd - seqYStart}" fill="${ann.color || "#315efb"}" fill-opacity="0.1" stroke="none"/>`;
+    let yShape, yText;
+    if (isTop) {
+      yText = y + 7;
+      yShape = y + 14;
+    } else {
+      yText = y + 15;
+      yShape = y + 7;
     }
     
-    // Draw the shape in SVG
-    if (shape === "curly" || shape === "edges" || shape === "arrow") {
-      const pathD = getAnnotationPath(shape, ann.position || "bottom", x1, x2, yShape);
-      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
-    } else if (shape === "line") {
-      const pathD = `M ${x1} ${yShape} L ${x2} ${yShape} M ${x1} ${yShape - 4} L ${x1} ${yShape + 4} M ${x2} ${yShape - 4} L ${x2} ${yShape + 4}`;
-      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
-    } else if (shape === "helix") {
-      let pathD = `M ${x1} ${yShape}`;
-      const waveL = 10;
-      const amp = 4;
-      const numCycles = Math.ceil((x2 - x1) / waveL);
-      for (let i = 0; i < numCycles; i++) {
-        const cx1 = x1 + i * waveL + waveL * 0.25;
-        const cy1 = yShape - amp;
-        const cx2 = x1 + i * waveL + waveL * 0.75;
-        const cy2 = yShape + amp;
-        const endX = Math.min(x2, x1 + (i + 1) * waveL);
-        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
-      }
-      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
-    } else if (shape === "loop") {
-      const loopH = isTop ? -8 : 8;
-      const xPart1 = x1 + (x2 - x1) / 3;
-      const xPart2 = x1 + 2 * (x2 - x1) / 3;
-      const mid1 = (x1 + xPart1) / 2;
-      const mid2 = (xPart1 + xPart2) / 2;
-      const mid3 = (xPart2 + x2) / 2;
-      const pathD = `M ${x1} ${yShape} Q ${mid1} ${yShape + loopH} ${xPart1} ${yShape} Q ${mid2} ${yShape + loopH} ${xPart2} ${yShape} Q ${mid3} ${yShape + loopH} ${x2} ${yShape}`;
-      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
-    } else if (shape === "cylinder") {
-      const fill = ann.hasBg ? (ann.color || "#315efb") : "none";
-      const fillOpacity = ann.hasBg ? ` fill-opacity="0.3"` : "";
+    for (const r of ranges) {
+      const x1 = left + nameW + (r.start - 1) * stepW;
+      const x2 = left + nameW + r.end * stepW - currentGap;
       
-      svg += `<ellipse cx="${x1}" cy="${yShape}" rx="3" ry="5" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
-      svg += `<rect x="${x1}" y="${yShape - 5}" width="${x2 - x1}" height="10" rx="3" ry="3" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
-      svg += `<path d="M ${x2} ${yShape - 5} A 3 5 0 0 1 ${x2} ${yShape + 5}" stroke="${color}" stroke-width="1.5" fill="none"/>`;
-    } else if (shape === "bhlh") {
-      const w = x2 - x1;
-      const xH1 = x1 + w * 0.35;
-      const xH2 = x1 + w * 0.65;
-      
-      let pathD = `M ${x1} ${yShape}`;
-      const waveL = 8;
-      const amp = 3.5;
-      let numH1 = Math.ceil((xH1 - x1) / waveL);
-      for (let i = 0; i < numH1; i++) {
-        const cx1 = x1 + i * waveL + waveL * 0.25;
-        const cy1 = yShape - amp;
-        const cx2 = x1 + i * waveL + waveL * 0.75;
-        const cy2 = yShape + amp;
-        const endX = Math.min(xH1, x1 + (i + 1) * waveL);
-        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+      // Draw background highlight behind sequence columns if enabled
+      if (ann.hasBg && seqYStart !== undefined && seqYEnd !== undefined) {
+        svg += `<rect x="${x1}" y="${seqYStart}" width="${x2 - x1}" height="${seqYEnd - seqYStart}" fill="${ann.color || "#315efb"}" fill-opacity="0.1" stroke="none"/>`;
       }
       
-      const xMidLoop = (xH1 + xH2) / 2;
-      const loopH = isTop ? -6 : 6;
-      pathD += ` M ${xH1} ${yShape} Q ${xMidLoop} ${yShape + loopH} ${xH2} ${yShape}`;
-      
-      pathD += ` M ${xH2} ${yShape}`;
-      let numH2 = Math.ceil((x2 - xH2) / waveL);
-      for (let i = 0; i < numH2; i++) {
-        const cx1 = xH2 + i * waveL + waveL * 0.25;
-        const cy1 = yShape - amp;
-        const cx2 = xH2 + i * waveL + waveL * 0.75;
-        const cy2 = yShape + amp;
-        const endX = Math.min(x2, xH2 + (i + 1) * waveL);
-        pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+      // Draw the shape in SVG
+      if (shape === "curly" || shape === "edges" || shape === "arrow") {
+        const pathD = getAnnotationPath(shape, ann.position || "bottom", x1, x2, yShape);
+        svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+      } else if (shape === "line") {
+        const pathD = `M ${x1} ${yShape} L ${x2} ${yShape} M ${x1} ${yShape - 4} L ${x1} ${yShape + 4} M ${x2} ${yShape - 4} L ${x2} ${yShape + 4}`;
+        svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+      } else if (shape === "helix") {
+        let pathD = `M ${x1} ${yShape}`;
+        const waveL = 10;
+        const amp = 4;
+        const numCycles = Math.ceil((x2 - x1) / waveL);
+        for (let i = 0; i < numCycles; i++) {
+          const cx1 = x1 + i * waveL + waveL * 0.25;
+          const cy1 = yShape - amp;
+          const cx2 = x1 + i * waveL + waveL * 0.75;
+          const cy2 = yShape + amp;
+          const endX = Math.min(x2, x1 + (i + 1) * waveL);
+          pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+        }
+        svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+      } else if (shape === "loop") {
+        svg += svgLoopConnector(x1, yShape, x2, isTop, {
+          glyphSize: 11,
+          spacing: 12,
+          color: color
+        });
+      } else if (shape === "cylinder") {
+        const fill = ann.hasBg ? (ann.color || "#315efb") : "none";
+        const fillOpacity = ann.hasBg ? ` fill-opacity="0.3"` : "";
+        
+        svg += `<ellipse cx="${x1}" cy="${yShape}" rx="3" ry="5" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
+        svg += `<rect x="${x1}" y="${yShape - 5}" width="${x2 - x1}" height="10" rx="3" ry="3" stroke="${color}" stroke-width="1.5" fill="${fill}"${fillOpacity}/>`;
+        svg += `<path d="M ${x2} ${yShape - 5} A 3 5 0 0 1 ${x2} ${yShape + 5}" stroke="${color}" stroke-width="1.5" fill="none"/>`;
+      } else if (shape === "bhlh") {
+        const w = x2 - x1;
+        const xH1 = x1 + w * 0.35;
+        const xH2 = x1 + w * 0.65;
+        
+        let pathD = `M ${x1} ${yShape}`;
+        const waveL = 8;
+        const amp = 3.5;
+        let numH1 = Math.ceil((xH1 - x1) / waveL);
+        for (let i = 0; i < numH1; i++) {
+          const cx1 = x1 + i * waveL + waveL * 0.25;
+          const cy1 = yShape - amp;
+          const cx2 = x1 + i * waveL + waveL * 0.75;
+          const cy2 = yShape + amp;
+          const endX = Math.min(xH1, x1 + (i + 1) * waveL);
+          pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+        }
+        
+        pathD += ` M ${xH2} ${yShape}`;
+        let numH2 = Math.ceil((x2 - xH2) / waveL);
+        for (let i = 0; i < numH2; i++) {
+          const cx1 = xH2 + i * waveL + waveL * 0.25;
+          const cy1 = yShape - amp;
+          const cx2 = xH2 + i * waveL + waveL * 0.75;
+          const cy2 = yShape + amp;
+          const endX = Math.min(x2, xH2 + (i + 1) * waveL);
+          pathD += ` C ${cx1} ${cy1} ${cx2} ${cy2} ${endX} ${yShape}`;
+        }
+        svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+        svg += svgLoopConnector(xH1, yShape, xH2, isTop, {
+          glyphSize: 11,
+          spacing: 12,
+          color: color
+        });
       }
-      svg += `<path d="${pathD}" fill="none" stroke="${color}" stroke-width="1.5"/>`;
+      
+      svg += `<text x="${(x1 + x2) / 2}" y="${yText}" text-anchor="middle" fill="${color}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">${esc(label)}</text>`;
     }
-    
-    svg += `<text x="${(x1 + x2) / 2}" y="${yText}" text-anchor="middle" fill="${color}" font-family="Arial, sans-serif" font-size="10" font-weight="bold">${esc(label)}</text>`;
-  }
+  });
+  
   return svg;
 }
 
@@ -2217,9 +2335,15 @@ function makeAlignmentSVG(result) {
   const stepW = cellW + currentGap;
   const stepH = cellH + currentGap;
   const len = result.aligned[0]?.length || 0;
-  const rangeTrackCount = result.rangeAnnotations ? result.rangeAnnotations.filter(a => a.type === "range").length : 0;
+  
+  // Pack top and bottom tracks
+  const topTracks = packAnnotations(result.rangeAnnotations || [], "top");
+  const bottomTracks = packAnnotations(result.rangeAnnotations || [], "bottom");
+  const topRangeCount = topTracks.length;
+  const bottomRangeCount = bottomTracks.length;
+  const rangeTrackCount = topRangeCount + bottomRangeCount;
+  
   const hasRuler = settings.showColumnNumbers ? 1 : 0;
-  const topRangeCount = result.rangeAnnotations ? result.rangeAnnotations.filter(a => a.type === "range" && a.position === "top").length : 0;
   const seqYStart = top + (hasRuler + topRangeCount) * stepH;
   const seqYEnd = seqYStart + result.aligned.length * stepH;
   
@@ -2254,13 +2378,10 @@ function makeAlignmentSVG(result) {
   }
   
   // Render Top Range Annotations (Above alignment rows)
-  if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
-    for (const ann of result.rangeAnnotations) {
-      if (ann.type !== "range" || ann.position !== "top") continue;
-      svg += svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
-      y += stepH;
-    }
-  }
+  topTracks.forEach((track, trackIndex) => {
+    svg += svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
+    y += stepH;
+  });
   
   // Render sequence rows with Approach 2 residue annotations
   const seqYMap = new Map();
@@ -2348,13 +2469,10 @@ function makeAlignmentSVG(result) {
   }
   
   // Render Bottom Range Annotations (Below alignment rows)
-  if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
-    for (const ann of result.rangeAnnotations) {
-      if (ann.type !== "range" || ann.position === "top") continue;
-      svg += svgRangeAnnotationRow(ann, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
-      y += stepH;
-    }
-  }
+  bottomTracks.forEach((track, trackIndex) => {
+    svg += svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd);
+    y += stepH;
+  });
   
   if (settings.showConsensus) {
     svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" font-weight="700" fill="#0f766e">Consensus</text>`;

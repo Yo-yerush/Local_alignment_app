@@ -21,8 +21,11 @@
 
   <main class="layout">
     <section class="panel input-panel">
-      <h2>1. Input FASTA</h2>
-      <textarea id="fastaInput" spellcheck="false" placeholder=">seq1\nATGCTAGCTAGC\n>seq2\nATG-TAGATAGC"></textarea>
+      <h2>Input FASTA</h2>
+      <textarea id="fastaInput" spellcheck="false" placeholder=">seq1
+ATGCTAGCTAGC
+>seq2
+ATG-TAGATAGC"></textarea>
       <div class="row gap">
         <label class="file-label">
           Load FASTA
@@ -184,10 +187,9 @@
                 <option value="line">── Straight Line</option>
                 <option value="edges">[ ] Square Bracket</option>
                 <option value="arrow">─▼─ Arrow Line</option>
-                <option value="helix">〰️ Helix Wave</option>
+                <option value="helix">~️ Helix Wave</option>
                 <option value="loop">⅏ Loop Arch</option>
                 <option value="cylinder">▱ Cylinder Box</option>
-                <option value="bhlh">🧬 Helix-Loop-Helix</option>
               </select>
             </div>
           </div>
@@ -238,7 +240,7 @@
     </section>
 
     <section class="panel settings-panel">
-      <h2>2. Alignment settings</h2>
+      <h2>Alignment settings</h2>
       <div class="settings-grid">
         <label>Sequence type
           <select id="seqType">
@@ -303,7 +305,7 @@
     <section class="panel results-panel">
       <div class="results-header">
         <div>
-          <h2>3. Results</h2>
+          <h2>Results</h2>
           <div id="resultStats" class="summary muted">Run an alignment to see results.</div>
         </div>
         <div class="toggle-row">
