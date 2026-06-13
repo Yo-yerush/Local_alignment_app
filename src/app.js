@@ -250,6 +250,11 @@ const DEFAULT_COLORS = {
   // General & Conservation
   "conserved-bg": "#dcfce7", "conserved-fg": "#166534",
   "simconserved-bg": "#fef9c3", "simconserved-fg": "#854d0e",
+  "conserved-bw-bg": "#000000", "conserved-bw-fg": "#ffffff",
+  "simconserved-bw-bg": "#cfcfcf", "simconserved-bw-fg": "#000000",
+  "mono-bw-bg": "#ffffff", "mono-bw-fg": "#000000",
+  "gap-bw-bg": "#ffffff", "gap-bw-fg": "#000000",
+  "consensus-bw-bg": "#ffffff", "consensus-bw-fg": "#000000",
   "mono-bg": "#f8fafc", "mono-fg": "#0f172a",
   "gap-bg": "#e7e9ee", "gap-fg": "#8a94a6",
 
@@ -263,7 +268,7 @@ const DEFAULT_COLORS = {
 
 let currentColors = { ...DEFAULT_COLORS };
 let currentRoundness = 0;
-let currentGap = 1;
+let currentGap = 0;
 
 function applyColors() {
   for (const [key, val] of Object.entries(currentColors)) {
@@ -747,6 +752,15 @@ const SCHEME_CATEGORIES = {
     { key: "identical-outline", label: "Identical Outline", preview: "*", borderOnly: true, defaults: { border: "identical-outline-border" } },
     { key: "similar-outline", label: "Similar Outline", preview: ":", borderOnly: true, defaults: { border: "similar-outline-border" } }
   ],
+  conserved_bw: [
+    { key: "conserved-bw", label: "Identical Col", preview: "C", defaults: { bg: "conserved-bw-bg", fg: "conserved-bw-fg" } },
+    { key: "simconserved-bw", label: "Similar Col", preview: "S", defaults: { bg: "simconserved-bw-bg", fg: "simconserved-bw-fg" } },
+    { key: "mono-bw", label: "Variable", preview: "V", defaults: { bg: "mono-bw-bg", fg: "mono-bw-fg" } },
+    { key: "gap-bw", label: "Gap (-)", preview: "-", defaults: { bg: "gap-bw-bg", fg: "gap-bw-fg" } },
+    { key: "consensus-bw", label: "Consensus Row", preview: "C", defaults: { bg: "consensus-bw-bg", fg: "consensus-bw-fg" } },
+    { key: "identical-outline", label: "Identical Outline", preview: "*", borderOnly: true, defaults: { border: "identical-outline-border" } },
+    { key: "similar-outline", label: "Similar Outline", preview: ":", borderOnly: true, defaults: { border: "similar-outline-border" } }
+  ],
   mono: [
     { key: "mono", label: "Residue/Base", preview: "X", defaults: { bg: "mono-bg", fg: "mono-fg" } },
     { key: "gap", label: "Gap (-)", preview: "-", defaults: { bg: "gap-bg", fg: "gap-fg" } },
@@ -779,10 +793,12 @@ function renderColorCustomizer(settings) {
   if (scheme === "auto") scheme = settings.type === "protein" ? "clustal" : "nucleotide";
   
   let categoryKey = "mono";
-  if (scheme === "nucleotide" || (settings.type !== "protein" && scheme !== "identity" && scheme !== "mono")) {
+  if (scheme === "nucleotide" || (settings.type !== "protein" && scheme !== "identity" && scheme !== "conserved_bw" && scheme !== "mono")) {
     categoryKey = "nucleotide";
   } else if (scheme === "identity") {
     categoryKey = "identity";
+  } else if (scheme === "conserved_bw") {
+    categoryKey = "conserved_bw";
   } else if (scheme === "mono") {
     categoryKey = "mono";
   } else {
@@ -893,16 +909,16 @@ function renderColorCustomizer(settings) {
 const DEMO_DNA = `>Arabidopsis_CGS_like_fragment
 ATGGCTGCTACGTTGATGACTGCTGAGGAGAATCTTCTCAGGATGGGATTCGAGAACTTGCTT
 >mto1_like_fragment
-ATGGCTGCTACGTTGATGACTGCCGAGGAGAATCTTCTCAGGATGGGATTTGAGAACTTGCTT
+ATGGCCACTACATTGATGACCGCCGAAGAAAATCTGCTTAGGATGGGATTTGAGGACTTATTA
 >Brassica_CGS_like_fragment
-ATGGCTGCTACGCTGATGACCGCTGAGGAGAACCTTCTCAGGATGGGATTCAAGAACTTGCTT`;
+ATGGCAGCTACGCTGATGACCGCTGAGGAGGACCTTCTCAAGTACGGGATTCAAGAACTTGCTT`;
 
 const DEMO_PROTEIN = `>RAB11A_human_fragment
 MGTRDDEYDYLFKVVLIGDSGVGKSNLLSRFTRNEFNLESKSTIGVEFATRSIQVDGKTIKAQIWDTAGQERYRAITSAYYRGAVGALLVYDIAKHLTYENVERWLKELRDHADSNIVIMLVGNKSDLRHLRAVPTDEARAFAEKNN
 >RAB11A_mouse_fragment
-MGTRDDEYDYLFKVVLIGDSGVGKSNLLSRFTRNEFNLESKSTIGVEFATRSIQVDGKTIKAQIWDTAGQERYRAITSAYYRGAVGALLVYDIAKHLTYENVERWLKELRDHADSNIVIMLVGNKSDLRHLRAVPTDEARAFAEKNN
+MGTRDDEYDYIFKIVLIGDTGVGKSNLLSRFTRSEFNLESKSTIGVEFATRTIQVDGKTIKAQIWDTAGQERYRAITSAYYRGAVGSLLVFDIAKHLTYDNVERWLKELREHADSNIVIMLVGNKSDLKHLRAVPTNEARAFAEKNQ
 >RAB11B_fragment
-MGTRDDEYDYLFKVVLIGDSGVGKSNLLSRFTRNEFNLESKSTIGVEFATRTIQVDGKTIKAQIWDTAGQERYRAITSAYYRGAVGALLVYDIAKHLTYENVERWLKELRDHADSNIVIMLVGNKSDLKHLRAVPTDEARAFAEKNN`;
+MGTRDDEYDYLFKAVFIGDSGAGKSNVLSRFTRNEFNIESKSTIGVEFAKRTIQVDGKTIKAQIWDTAGQERYRAITSAYYRGAVGTLLVYDIAKHLTYENVERWIKELRDHADSNIVIMLIGNKADLRHLRAVPTDEARAFTEKNN`;
 
 function parseMatrix(text) {
   const lines = text.trim().split(/\n+/).map(l => l.trim()).filter(Boolean);
@@ -2096,6 +2112,7 @@ function makeCell(char, result, col, special = "", annotationObj = null) {
   span.className = `cell ${cellClass(c, result.settings, result.aligned, col)} ${conservationClass(result.aligned, col, c, result.settings)}`;
   
   if (special.includes("similarity") || special.includes("ruler")) span.className = "cell mono";
+  if (special.includes("consensus") && result.settings.colorScheme === "conserved_bw") span.className = "cell consensus-bw";
   
   if (special.includes("annotation") && annotationObj) {
     span.className = "cell";
@@ -2138,9 +2155,16 @@ function conservationClass(aligned, col, char, settings) {
 
 function cellClass(charRaw, settings, aligned, col) {
   const char = normalizeResidue(charRaw, settings.type);
-  if (char === "-") return "gap";
   let scheme = settings.colorScheme;
   if (scheme === "auto") scheme = settings.type === "protein" ? "clustal" : "nucleotide";
+  if (scheme === "conserved_bw") {
+    if (char === "-") return "gap-bw";
+    const mark = similarityMark(aligned, col, settings);
+    if (mark === "*") return "conserved-bw";
+    if (mark === ":") return "simconserved-bw";
+    return "mono-bw";
+  }
+  if (char === "-") return "gap";
   if (scheme === "mono") return "mono";
   if (scheme === "identity") {
     const mark = similarityMark(aligned, col, settings);
@@ -2189,10 +2213,12 @@ function proteinTaylorClass(c) {
 function renderLegend(settings) {
   let scheme = settings.colorScheme === "auto" ? (settings.type === "protein" ? "clustal" : "nucleotide") : settings.colorScheme;
   const items = [];
-  if (scheme === "nucleotide" || settings.type !== "protein") {
+  if (scheme === "nucleotide" || (settings.type !== "protein" && scheme !== "identity" && scheme !== "conserved_bw" && scheme !== "mono")) {
     items.push(["A", "nt-A"], ["C", "nt-C"], ["G", "nt-G"], [settings.type === "rna" ? "U" : "T", settings.type === "rna" ? "nt-U" : "nt-T"], ["Ambiguous", "nt-N"], ["Gap", "gap"]);
   } else if (scheme === "identity") {
     items.push(["Identical column", "conserved"], ["Similar column", "simconserved"], ["Variable", "mono"], ["Gap", "gap"]);
+  } else if (scheme === "conserved_bw") {
+    items.push(["Identical column", "conserved-bw"], ["Similar column", "simconserved-bw"], ["Variable", "mono-bw"], ["Gap", "gap-bw"]);
   } else if (scheme === "mono") {
     items.push(["Residue/base", "mono"], ["Gap", "gap"]);
   } else {
@@ -2527,8 +2553,9 @@ function svgCell(ch, x, y, w, h, result, col, consensus = false, similarity = fa
 function svgColors(ch, result, col, consensus, similarity) {
   if (similarity) return { bg: "#ffffff", fg: "#475569", stroke: "#ffffff", sw: 0 };
   if (consensus) {
-    const bg = currentColors["consensus-bg"] || "#ccfbf1";
-    const fg = currentColors["consensus-fg"] || "#0f766e";
+    const isBw = result.settings.colorScheme === "conserved_bw";
+    const bg = currentColors[isBw ? "consensus-bw-bg" : "consensus-bg"] || "#ffffff";
+    const fg = currentColors[isBw ? "consensus-bw-fg" : "consensus-fg"] || "#000000";
     const isTrans = bg === "transparent";
     return { bg: isTrans ? "#ffffff" : bg, fg, stroke: isTrans ? "transparent" : fg, sw: isTrans ? 0 : 1 };
   }

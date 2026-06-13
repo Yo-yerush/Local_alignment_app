@@ -53,6 +53,16 @@
   --color-conserved-fg: #166534;
   --color-simconserved-bg: #fef9c3;
   --color-simconserved-fg: #854d0e;
+  --color-conserved-bw-bg: #000000;
+  --color-conserved-bw-fg: #ffffff;
+  --color-simconserved-bw-bg: #b8bcc4;
+  --color-simconserved-bw-fg: #000000;
+  --color-mono-bw-bg: #ffffff;
+  --color-mono-bw-fg: #000000;
+  --color-gap-bw-bg: #ffffff;
+  --color-gap-bw-fg: #000000;
+  --color-consensus-bw-bg: #ffffff;
+  --color-consensus-bw-fg: #000000;
   --color-mono-bg: #f8fafc;
   --color-mono-fg: #0f172a;
   --color-gap-bg: var(--gap);
@@ -507,6 +517,11 @@ input[type="checkbox"] {
 .pro-sulfur { background: var(--color-pro-sulfur-bg); color: var(--color-pro-sulfur-fg); }
 .conserved { background: var(--color-conserved-bg); color: var(--color-conserved-fg); }
 .simconserved { background: var(--color-simconserved-bg); color: var(--color-simconserved-fg); }
+.conserved-bw { background: var(--color-conserved-bw-bg); color: var(--color-conserved-bw-fg); }
+.simconserved-bw { background: var(--color-simconserved-bw-bg); color: var(--color-simconserved-bw-fg); }
+.mono-bw { background: var(--color-mono-bw-bg); color: var(--color-mono-bw-fg); }
+.gap-bw { background: var(--color-gap-bw-bg); color: var(--color-gap-bw-fg); }
+.consensus-row .cell.consensus-bw { background: var(--color-consensus-bw-bg); color: var(--color-consensus-bw-fg); }
 .mono { background: var(--color-mono-bg); color: var(--color-mono-fg); }
 
 .error-box {
