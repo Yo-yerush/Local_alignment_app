@@ -2,7 +2,7 @@
 
 A local JavaScript app for exploratory alignment of DNA, RNA, and protein FASTA sequences.
 
-Open `Local_alignment.html` in any modern browser. No installation, Node.js, R, Python, server, or internet connection is required.
+Open `index.html` in any modern browser. No installation, Node.js, R, Python, server, or internet connection is required.
 
 ## What it does
 
@@ -58,7 +58,7 @@ For many sequences, very long sequences, or publication-grade multiple sequence 
 
 ## Files
 
-- `Local_alignment.html` — app layout.
+- `index.html` — app layout.
 - `src/style.css` — interface and alignment plot styling.
 - `src/app.js` — parser, alignment algorithms, scoring models, viewer, and export logic.
 - `examples_dna.fasta` — small DNA demo.
