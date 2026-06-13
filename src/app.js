@@ -154,6 +154,9 @@ const DOM = {
   mismatchScore: document.getElementById("mismatchScore"),
   colorScheme: document.getElementById("colorScheme"),
   wrapCols: document.getElementById("wrapCols"),
+  outputFont: document.getElementById("outputFont"),
+  outputFontSize: document.getElementById("outputFontSize"),
+  outputFontSizeVal: document.getElementById("outputFontSizeVal"),
   modelExplanation: document.getElementById("modelExplanation"),
   runBtn: document.getElementById("runBtn"),
   copyFastaBtn: document.getElementById("copyFastaBtn"),
@@ -224,6 +227,34 @@ const DOM = {
   annFillBoxes: document.getElementById("annFillBoxes"),
   showColumnNumbers: document.getElementById("showColumnNumbers")
 };
+
+const OUTPUT_FONT_FAMILIES = {
+  mono: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, monospace",
+  arial: "Arial, Helvetica, sans-serif",
+  courier: "Courier New, Courier, monospace",
+  times: "Times New Roman, Times, serif"
+};
+
+function outputFontFamily(settingsOrValue) {
+  const value = typeof settingsOrValue === "string" ? settingsOrValue : settingsOrValue?.outputFont;
+  return OUTPUT_FONT_FAMILIES[value] || OUTPUT_FONT_FAMILIES.mono;
+}
+
+function applyOutputFont(settingsOrValue) {
+  document.documentElement.style.setProperty("--alignment-output-font", outputFontFamily(settingsOrValue));
+}
+
+function outputFontSize(settingsOrValue) {
+  const raw = typeof settingsOrValue === "number" ? settingsOrValue : settingsOrValue?.outputFontSize;
+  return clamp(Number(raw) || 11, 8, 18);
+}
+
+function applyOutputFontSize(settingsOrValue) {
+  const size = outputFontSize(settingsOrValue);
+  document.documentElement.style.setProperty("--alignment-output-font-size", `${size}px`);
+  DOM.outputFontSize.value = size;
+  DOM.outputFontSizeVal.textContent = `${size}px`;
+}
 
 let currentResult = null;
 let annotationsArray = [];
@@ -1041,6 +1072,8 @@ function getSettings(type) {
     mismatch: Number(DOM.mismatchScore.value),
     colorScheme: DOM.colorScheme.value,
     wrapCols: clamp(Number(DOM.wrapCols.value) || 80, 20, 200),
+    outputFont: DOM.outputFont.value,
+    outputFontSize: outputFontSize(Number(DOM.outputFontSize.value)),
     showLogo: DOM.showLogo.checked,
     showConsensus: DOM.showConsensus.checked,
     showSimilarity: DOM.showSimilarity.checked,
@@ -1475,6 +1508,8 @@ function renderResult(result) {
   DOM.copyFastaBtn.disabled = false;
   DOM.downloadFastaBtn.disabled = false;
   DOM.downloadSvgBtn.disabled = false;
+  applyOutputFont(settings);
+  applyOutputFontSize(settings);
   renderStats(result);
   renderLegend(settings);
   renderAlignmentViewer(result);
@@ -2112,7 +2147,7 @@ function renderLogoRow(start, end, result) {
   
   const nameEl = document.createElement("div");
   nameEl.className = "aln-name";
-  nameEl.textContent = "Logo";
+  nameEl.textContent = "";
   
   const cells = document.createElement("div");
   cells.className = "aln-cells logo-cells";
@@ -2135,6 +2170,7 @@ function makeLogoCell(result, col) {
     const letter = document.createElement("span");
     letter.className = "logo-letter";
     letter.textContent = entry.char;
+    letter.title = `${entry.char}: ${entry.bits.toFixed(2)} bits`;
     letter.style.color = logoColorForChar(entry.char, result.settings);
     letter.style.bottom = `${bottomPct}%`;
     letter.style.height = `${entry.heightPct}%`;
@@ -2159,25 +2195,32 @@ function logoEntriesAt(result, col) {
   if (!total) return [];
   
   const alphabetSize = result.settings.type === "protein" ? 20 : 4;
+  const maxBits = Math.log2(alphabetSize);
   let entropy = 0;
   for (const count of counts.values()) {
     const p = count / total;
     entropy -= p * Math.log2(p);
   }
-  const conservation = Math.max(0, 1 - entropy / Math.log2(alphabetSize));
-  if (conservation <= 0.02) return [];
+  const informationBits = Math.max(0, maxBits - entropy);
+  if (informationBits < 0.05) return [];
   const maxLetters = result.settings.type === "protein" ? 5 : 4;
   
   return [...counts.entries()]
-    .map(([char, count]) => ({ char, p: count / total }))
-    .sort((a, b) => a.p - b.p || a.char.localeCompare(b.char))
+    .map(([char, count]) => {
+      const p = count / total;
+      const bits = p * informationBits;
+      return { char, p, bits };
+    })
+    .filter(entry => entry.bits >= maxBits * 0.015)
+    .sort((a, b) => a.bits - b.bits || a.char.localeCompare(b.char))
     .slice(-maxLetters)
     .map(entry => {
-      const heightPct = Math.max(5, entry.p * conservation * 100);
+      const heightPct = entry.bits / maxBits * 100;
       return {
         char: entry.char,
+        bits: entry.bits,
         heightPct,
-        fontSize: clamp(Math.round(6 + heightPct * 0.22), 7, 22)
+        fontSize: clamp(Math.round(6 + heightPct * 0.32), 7, 26)
       };
     });
 }
@@ -2191,6 +2234,7 @@ function logoColorForChar(charRaw, settings) {
   
   let scheme = settings.colorScheme;
   if (scheme === "auto") scheme = "clustal";
+  if (scheme === "identity" || scheme === "conserved_bw" || scheme === "mono") scheme = "clustal";
   if (scheme === "zappo") return currentColors[`${proteinZappoClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
   if (scheme === "taylor") return currentColors[`${proteinTaylorClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
   if (scheme === "clustal") return currentColors[`${proteinClustalClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
@@ -2307,7 +2351,7 @@ function proteinTaylorClass(c) {
   return "mono";
 }
 
-function renderLegend(settings) {
+function legendItemsForSettings(settings) {
   let scheme = settings.colorScheme === "auto" ? (settings.type === "protein" ? "clustal" : "nucleotide") : settings.colorScheme;
   const items = [];
   if (scheme === "nucleotide" || (settings.type !== "protein" && scheme !== "identity" && scheme !== "conserved_bw" && scheme !== "mono")) {
@@ -2322,7 +2366,25 @@ function renderLegend(settings) {
     items.push(["Hydrophobic", "pro-hydrophobic"], ["Aromatic", "pro-aromatic"], ["Positive", "pro-positive"], ["Negative", "pro-negative"], ["Polar", "pro-polar"], ["Small/special", "pro-small"], ["Sulfur", "pro-sulfur"], ["Gap", "gap"]);
   }
   items.push(["Outline: identical", "identical"], ["Outline: similar", "similar"]);
+  return items;
+}
+
+function renderLegend(settings) {
+  const items = legendItemsForSettings(settings);
   DOM.legend.innerHTML = items.map(([label, cls]) => `<span class="legend-item"><span class="legend-swatch cell ${cls}"></span>${escapeHtml(label)}</span>`).join("");
+}
+
+function svgLegendItemsForSettings(settings) {
+  return legendItemsForSettings(settings).filter(([, cls]) => {
+    if (cls !== "identical" && cls !== "similar") return true;
+    const key = cls === "identical" ? "identical-outline-border" : "similar-outline-border";
+    return !isTransparentColor(currentColors[key] || "transparent");
+  });
+}
+
+function isTransparentColor(color) {
+  const value = String(color || "").trim().toLowerCase();
+  return value === "transparent" || value === "none" || value === "rgba(0,0,0,0)" || value === "rgba(0, 0, 0, 0)";
 }
 
 function toFasta(names, aligned) {
@@ -2618,7 +2680,8 @@ function makeAlignmentSVGUnwrapped(result) {
 
 function makeAlignmentSVG(result) {
   const settings = result.settings;
-  const cellW = 14, cellH = 18, nameW = 190, top = 36, left = 12;
+  const svgBaseFontSize = outputFontSize(settings);
+  const cellW = svgBaseFontSize + 5, cellH = svgBaseFontSize + 9, nameW = 190, top = 36, left = 12;
   const logoH = 40;
   const stepW = cellW + currentGap;
   const stepH = cellH + currentGap;
@@ -2640,8 +2703,12 @@ function makeAlignmentSVG(result) {
   const blockHeight = rows * stepH + (settings.showLogo ? logoStepH : 0);
   const posW = 44;
   const width = Math.max(900, left + nameW + blockCols * stepW + posW + 36);
-  const height = top + blockCount * blockHeight + Math.max(0, blockCount - 1) * blockGapY + 70;
   const esc = escapeHtml;
+  const svgFont = outputFontFamily(settings);
+  const legendGap = 42;
+  const legendLayout = layoutSvgLegendItems(svgLegendItemsForSettings(settings), width - left * 2);
+  const legendHeight = 22 + legendLayout.rows * 22;
+  const height = top + blockCount * blockHeight + Math.max(0, blockCount - 1) * blockGapY + legendGap + legendHeight + 52;
   
   let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
   svg += `<rect width="100%" height="100%" fill="#ffffff"/><text x="${left}" y="24" font-family="Arial" font-size="18" font-weight="700">Sequence alignment</text>`;
@@ -2654,7 +2721,7 @@ function makeAlignmentSVG(result) {
     const seqYEnd = seqYStart + result.aligned.length * stepH;
     
     if (settings.showColumnNumbers) {
-      svg += `<text x="${left}" y="${y + 13}" font-family="Arial" font-size="11" font-weight="700" fill="#64748b">Position</text>`;
+      svg += `<text x="${left}" y="${y + cellH - 5}" font-family="${svgFont}" font-size="${svgBaseFontSize}" font-weight="700" fill="#64748b">Position</text>`;
       const rulerChars = Array(blockLen).fill(" ");
       for (let col = start; col < end; col++) {
         const colNum = col + 1;
@@ -2670,7 +2737,7 @@ function makeAlignmentSVG(result) {
         }
       }
       for (let c = 0; c < blockLen; c++) {
-        svg += svgRulerCell(rulerChars[c], left + nameW + c * stepW, y, cellW, cellH);
+        svg += svgRulerCell(rulerChars[c], left + nameW + c * stepW, y, cellW, cellH, svgFont, Math.max(8, svgBaseFontSize - 1));
       }
       y += stepH;
     }
@@ -2681,7 +2748,6 @@ function makeAlignmentSVG(result) {
     });
     
     if (settings.showLogo) {
-      svg += `<text x="${left}" y="${y + 24}" font-family="monospace" font-size="12" font-weight="700" fill="#64748b">Logo</text>`;
       for (let c = start; c < end; c++) {
         svg += svgLogoCell(result, c, left + nameW + (c - start) * stepW, y, cellW, logoH);
       }
@@ -2693,7 +2759,7 @@ function makeAlignmentSVG(result) {
       const name = result.names[r];
       const sequence = result.aligned[r];
       seqYMap.set(name, y);
-      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" fill="#334155">${esc(name.slice(0, 26))}</text>`;
+      svg += `<text x="${left}" y="${y + cellH - 5}" font-family="${svgFont}" font-size="${svgBaseFontSize + 1}" fill="#334155">${esc(name.slice(0, 26))}</text>`;
       
       let unalignedPos = sequence.slice(0, start).replace(/-/g, "").length;
       for (let c = start; c < end; c++) {
@@ -2705,7 +2771,7 @@ function makeAlignmentSVG(result) {
         }
         svg += svgCell(char, left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, false, false, ann);
       }
-      svg += `<text x="${left + nameW + blockLen * stepW + 12 + posW}" y="${y + 13}" text-anchor="end" font-family="monospace" font-size="12" font-weight="500" fill="#64748b">${esc(residuePosition(sequence.slice(0, end)))}</text>`;
+      svg += `<text x="${left + nameW + blockLen * stepW + 12 + posW}" y="${y + cellH - 5}" text-anchor="end" font-family="${svgFont}" font-size="${svgBaseFontSize + 1}" font-weight="500" fill="#64748b">${esc(residuePosition(sequence.slice(0, end)))}</text>`;
       y += stepH;
     }
     
@@ -2783,7 +2849,7 @@ function makeAlignmentSVG(result) {
     });
     
     if (settings.showConsensus) {
-      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" font-weight="700" fill="#0f766e">Consensus</text>`;
+      svg += `<text x="${left}" y="${y + cellH - 5}" font-family="${svgFont}" font-size="${svgBaseFontSize + 1}" font-weight="700" fill="#0f766e">Consensus</text>`;
       for (let c = start; c < end; c++) {
         svg += svgCell(consensusAt(result.aligned, c, settings), left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, true);
       }
@@ -2791,7 +2857,7 @@ function makeAlignmentSVG(result) {
     }
     
     if (settings.showSimilarity) {
-      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" fill="#64748b">Similarity</text>`;
+      svg += `<text x="${left}" y="${y + cellH - 5}" font-family="${svgFont}" font-size="${svgBaseFontSize + 1}" fill="#64748b">Similarity</text>`;
       for (let c = start; c < end; c++) {
         svg += svgCell(similarityMark(result.aligned, c, settings), left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, false, true);
       }
@@ -2801,25 +2867,68 @@ function makeAlignmentSVG(result) {
     if (end < len) y += blockGapY;
   }
   
+  svg += svgLegend(legendLayout, left, y + legendGap, svgFont);
   svg += `<text x="${left}" y="${height - 18}" font-family="Arial" font-size="12" fill="#64748b">Generated locally by Sequence Alignment Studio. * identical column, : similar column.</text>`;
   svg += `</svg>`;
   return svg;
 }
 
-function svgRulerCell(ch, x, y, w, h) {
+function svgRulerCell(ch, x, y, w, h, fontFamily = "monospace", fontSize = 10) {
   const label = ch === " " ? "" : ch;
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="none"/>` +
-    `<text x="${x + w / 2}" y="${y + 13}" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#64748b">${escapeHtml(label)}</text>`;
+    `<text x="${x + w / 2}" y="${y + h - 5}" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="600" fill="#64748b">${escapeHtml(label)}</text>`;
+}
+
+function layoutSvgLegendItems(items, maxWidth) {
+  const positioned = [];
+  let x = 0;
+  let row = 0;
+  for (const item of items) {
+    const [label] = item;
+    const itemW = Math.max(82, 28 + label.length * 7);
+    if (x > 0 && x + itemW > maxWidth) {
+      row++;
+      x = 0;
+    }
+    positioned.push({ item, x, y: row * 22, width: itemW });
+    x += itemW + 18;
+  }
+  return { items: positioned, rows: row + 1 };
+}
+
+function svgLegendSwatch(cls) {
+  if (cls === "identical" || cls === "similar") {
+    const stroke = currentColors[cls === "identical" ? "identical-outline-border" : "similar-outline-border"] || "transparent";
+    return { bg: "#ffffff", fg: "#0f172a", stroke, sw: stroke === "transparent" ? 0.8 : 2 };
+  }
+  const bg = currentColors[`${cls}-bg`] || "#ffffff";
+  const fg = currentColors[`${cls}-fg`] || "#0f172a";
+  return { bg: bg === "transparent" ? "#ffffff" : bg, fg, stroke: "rgba(0,0,0,0.12)", sw: 0.8 };
+}
+
+function svgLegend(layout, x, y, fontFamily) {
+  let svg = `<text x="${x}" y="${y}" font-family="${fontFamily}" font-size="12" font-weight="700" fill="#334155">Legend</text>`;
+  for (const { item, x: dx, y: dy } of layout.items) {
+    const [label, cls] = item;
+    const colors = svgLegendSwatch(cls);
+    const swatchX = x + dx;
+    const swatchY = y + 10 + dy;
+    svg += `<rect x="${swatchX}" y="${swatchY}" width="14" height="14" rx="2" fill="${colors.bg}" stroke="${colors.stroke}" stroke-width="${colors.sw}"/>`;
+    svg += `<text x="${swatchX + 20}" y="${swatchY + 11}" font-family="${fontFamily}" font-size="11" fill="#334155">${escapeHtml(label)}</text>`;
+  }
+  return svg;
 }
 
 function svgLogoCell(result, col, x, y, w, h) {
   let svg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff" stroke="transparent" stroke-width="0"/>`;
   let bottomPx = 0;
+  const fontFamily = outputFontFamily(result.settings);
+  const sizeScale = outputFontSize(result.settings) / 11;
   for (const entry of logoEntriesAt(result, col)) {
     const blockH = entry.heightPct * h / 100;
-    const fontSize = clamp(Math.round(entry.fontSize * 0.9), 7, 20);
-    const textY = y + h - bottomPx - Math.max(1, (blockH - fontSize) / 2);
-    svg += `<text x="${x + w / 2}" y="${textY}" text-anchor="middle" font-family="monospace" font-size="${fontSize}" font-weight="900" fill="${logoColorForChar(entry.char, result.settings)}">${escapeHtml(entry.char)}</text>`;
+    const fontSize = clamp(Math.round(entry.fontSize * 0.92 * sizeScale), 7, 32);
+    const textY = y + h - bottomPx - Math.max(1, blockH * 0.08);
+    svg += `<text x="${x + w / 2}" y="${textY}" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="500" fill="${logoColorForChar(entry.char, result.settings)}">${escapeHtml(entry.char)}</text>`;
     bottomPx += blockH;
   }
   return svg;
@@ -2838,6 +2947,8 @@ function svgAnnotationCell(ch, x, y, w, h, isAnnotated, color, textColor, showBg
 
 function svgCell(ch, x, y, w, h, result, col, consensus = false, similarity = false, residueAnn = null) {
   const colors = svgColors(ch, result, col, consensus, similarity);
+  const fontFamily = outputFontFamily(result.settings);
+  const fontSize = outputFontSize(result.settings);
   const label = ch === " " ? "·" : ch;
   let sw = colors.sw;
   let stroke = colors.stroke;
@@ -2851,7 +2962,7 @@ function svgCell(ch, x, y, w, h, result, col, consensus = false, similarity = fa
   }
   
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${currentRoundness}" fill="${colors.bg}" stroke="${stroke}" stroke-width="${sw}"/>` +
-    `<text x="${x + w / 2}" y="${y + 13}" text-anchor="middle" font-family="monospace" font-size="11" font-weight="700" fill="${colors.fg}">${escapeHtml(label)}</text>`;
+    `<text x="${x + w / 2}" y="${y + h - 5}" text-anchor="middle" font-family="${fontFamily}" font-size="${fontSize}" font-weight="700" fill="${colors.fg}">${escapeHtml(label)}</text>`;
 }
 
 function svgColors(ch, result, col, consensus, similarity) {
@@ -2953,15 +3064,37 @@ DOM.colorScheme.addEventListener("change", () => {
 DOM.showConsensus.addEventListener("change", () => { if (currentResult) { currentResult.settings.showConsensus = DOM.showConsensus.checked; renderAlignmentViewer(currentResult); } });
 DOM.showLogo.addEventListener("change", () => { if (currentResult) { currentResult.settings.showLogo = DOM.showLogo.checked; renderAlignmentViewer(currentResult); } });
 DOM.showSimilarity.addEventListener("change", () => { if (currentResult) { currentResult.settings.showSimilarity = DOM.showSimilarity.checked; renderAlignmentViewer(currentResult); } });
+DOM.outputFont.addEventListener("change", () => {
+  const font = DOM.outputFont.value;
+  applyOutputFont(font);
+  if (currentResult) {
+    currentResult.settings.outputFont = font;
+    renderAlignmentViewer(currentResult);
+  }
+});
+DOM.outputFontSize.addEventListener("input", () => {
+  const size = outputFontSize(Number(DOM.outputFontSize.value));
+  applyOutputFontSize(size);
+  if (currentResult) {
+    currentResult.settings.outputFontSize = size;
+    renderAlignmentViewer(currentResult);
+  }
+});
 DOM.wrapCols.addEventListener("change", () => { if (currentResult) { currentResult.settings.wrapCols = clamp(Number(DOM.wrapCols.value) || 80, 20, 200); renderAlignmentViewer(currentResult); } });
 DOM.resetColorsBtn.addEventListener("click", () => {
   currentColors = { ...DEFAULT_COLORS };
   currentRoundness = 0;
   currentGap = 1;
+  DOM.outputFont.value = "mono";
   applyColors();
   applyRoundness();
   applyGap();
+  applyOutputFont("mono");
+  applyOutputFontSize(11);
   if (currentResult) {
+    currentResult.settings.outputFont = "mono";
+    currentResult.settings.outputFontSize = 11;
+    renderAlignmentViewer(currentResult);
     renderColorCustomizer(currentResult.settings);
   }
 });
@@ -3258,6 +3391,8 @@ DOM.loadDemoProtein.addEventListener("click", () => {
 applyColors();
 applyRoundness();
 applyGap();
+applyOutputFont(DOM.outputFont.value);
+applyOutputFontSize(Number(DOM.outputFontSize.value));
 renderColorCustomizer(null);
 updateInputSummary();
 onAnnotationsUpdated();

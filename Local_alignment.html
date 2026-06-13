@@ -11,7 +11,7 @@
     <div>
       <h1><a href="https://github.com/Yo-yerush/Local_alignment_app" target="_blank" rel="noopener noreferrer" class="app-logo-link"><span class="app-logo">☲</span></a>Sequence Alignment Studio</h1>
       <p>Local FASTA alignment for DNA, RNA, and protein. Runs fully in your browser.</p>
-      <div class="app-author">Yonatan Yerushalmy · Rachel Amir's group</div>
+      <div class="app-author">By Yonatan Yerushalmy · Rachel Amir's group</div>
     </div>
     <div class="header-actions">
       <button id="loadDemoDna" class="ghost">DNA demo</button>
@@ -345,6 +345,18 @@ ATG-TAGATAGC"></textarea>
           <label class="roundness-label">Box spacing:
             <input id="boxGap" type="range" min="0" max="8" value="0" step="1" />
             <span id="boxGapVal">0px</span>
+          </label>
+          <label class="roundness-label">Output font:
+            <select id="outputFont" style="width: auto; padding: 6px 10px; font-weight: 500;">
+              <option value="mono" selected>Monospace</option>
+              <option value="arial">Arial</option>
+              <option value="courier">Courier</option>
+              <option value="times">Times</option>
+            </select>
+          </label>
+          <label class="roundness-label">Font size:
+            <input id="outputFontSize" type="range" min="8" max="18" value="11" step="1" />
+            <span id="outputFontSizeVal">11px</span>
           </label>
         </div>
 
