@@ -489,6 +489,7 @@ input[type="checkbox"] {
 }
 .consensus-row .cell {
   background: var(--color-consensus-bg);
+  border-color: transparent;
   color: var(--color-consensus-fg);
 }
 .similarity-row .cell {
@@ -496,6 +497,34 @@ input[type="checkbox"] {
   background: transparent;
   border-color: transparent;
   font-weight: 700;
+}
+.logo-row .aln-name {
+  color: var(--muted);
+  font-weight: 700;
+}
+.logo-row .aln-cells {
+  align-items: flex-end;
+  min-height: 42px;
+}
+.logo-cell {
+  width: 16px;
+  height: 40px;
+  position: relative;
+  display: inline-block;
+  margin-right: var(--cell-gap);
+  background: #ffffff;
+  border: 1px solid transparent;
+  overflow: hidden;
+}
+.logo-letter {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  text-align: center;
+  line-height: 1;
+  font-family: var(--mono);
+  font-weight: 900;
+  transform-origin: bottom center;
 }
 
 /* Nucleotide colors */

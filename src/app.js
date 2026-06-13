@@ -159,6 +159,7 @@ const DOM = {
   copyFastaBtn: document.getElementById("copyFastaBtn"),
   downloadFastaBtn: document.getElementById("downloadFastaBtn"),
   downloadSvgBtn: document.getElementById("downloadSvgBtn"),
+  showLogo: document.getElementById("showLogo"),
   showConsensus: document.getElementById("showConsensus"),
   showSimilarity: document.getElementById("showSimilarity"),
   resultStats: document.getElementById("resultStats"),
@@ -1040,6 +1041,7 @@ function getSettings(type) {
     mismatch: Number(DOM.mismatchScore.value),
     colorScheme: DOM.colorScheme.value,
     wrapCols: clamp(Number(DOM.wrapCols.value) || 80, 20, 200),
+    showLogo: DOM.showLogo.checked,
     showConsensus: DOM.showConsensus.checked,
     showSimilarity: DOM.showSimilarity.checked,
     showColumnNumbers: DOM.showColumnNumbers.checked
@@ -1578,6 +1580,10 @@ function renderAlignmentViewer(result) {
       block.appendChild(renderRangeAnnotationRow("top", trackIndex, start, end, len, result));
     });
     
+    if (result.settings.showLogo) {
+      block.appendChild(renderLogoRow(start, end, result));
+    }
+    
     // Render sequence rows
     for (let row = 0; row < result.aligned.length; row++) {
       block.appendChild(renderAlignmentRow(result.names[row], result.aligned[row], start, end, result, row));
@@ -1845,7 +1851,7 @@ function redrawSVGOverlays(result) {
         const spacerRow = block.querySelector(`.aln-row.annotation-spacer[data-ann-position="${position}"][data-track-index="${trackIndex}"]`);
         if (!spacerRow) return;
         
-        const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
+        const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.logo-row):not(.consensus-row):not(.similarity-row)"));
         if (seqRows.length === 0) return;
         const cells = seqRows[0].querySelectorAll(".cell");
         
@@ -1922,7 +1928,7 @@ function redrawSVGOverlays(result) {
     result.rangeAnnotations.forEach(ann => {
       if (ann.type === "range") return;
       const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
-      const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.consensus-row):not(.similarity-row)"));
+      const seqRows = Array.from(block.querySelectorAll(".aln-row:not(.ruler-row):not(.annotation-row):not(.annotation-spacer):not(.logo-row):not(.consensus-row):not(.similarity-row)"));
       if (seqRows.length === 0) return;
       
       ranges.forEach(r => {
@@ -2100,6 +2106,97 @@ function renderSpecialRow(name, sequence, start, end, result, className, annotat
   return row;
 }
 
+function renderLogoRow(start, end, result) {
+  const row = document.createElement("div");
+  row.className = "aln-row logo-row";
+  
+  const nameEl = document.createElement("div");
+  nameEl.className = "aln-name";
+  nameEl.textContent = "Logo";
+  
+  const cells = document.createElement("div");
+  cells.className = "aln-cells logo-cells";
+  for (let col = start; col < end; col++) cells.appendChild(makeLogoCell(result, col));
+  
+  const pos = document.createElement("div");
+  pos.className = "aln-pos";
+  pos.textContent = "";
+  
+  row.append(nameEl, cells, pos);
+  return row;
+}
+
+function makeLogoCell(result, col) {
+  const cell = document.createElement("span");
+  cell.className = "logo-cell";
+  
+  let bottomPct = 0;
+  for (const entry of logoEntriesAt(result, col)) {
+    const letter = document.createElement("span");
+    letter.className = "logo-letter";
+    letter.textContent = entry.char;
+    letter.style.color = logoColorForChar(entry.char, result.settings);
+    letter.style.bottom = `${bottomPct}%`;
+    letter.style.height = `${entry.heightPct}%`;
+    letter.style.fontSize = `${entry.fontSize}px`;
+    letter.style.lineHeight = `${entry.fontSize}px`;
+    bottomPct += entry.heightPct;
+    cell.appendChild(letter);
+  }
+  
+  return cell;
+}
+
+function logoEntriesAt(result, col) {
+  const counts = new Map();
+  let total = 0;
+  for (const sequence of result.aligned) {
+    const char = normalizeResidue(sequence[col] || "", result.settings.type);
+    if (!char || char === "-" || char === " ") continue;
+    counts.set(char, (counts.get(char) || 0) + 1);
+    total++;
+  }
+  if (!total) return [];
+  
+  const alphabetSize = result.settings.type === "protein" ? 20 : 4;
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const p = count / total;
+    entropy -= p * Math.log2(p);
+  }
+  const conservation = Math.max(0, 1 - entropy / Math.log2(alphabetSize));
+  if (conservation <= 0.02) return [];
+  const maxLetters = result.settings.type === "protein" ? 5 : 4;
+  
+  return [...counts.entries()]
+    .map(([char, count]) => ({ char, p: count / total }))
+    .sort((a, b) => a.p - b.p || a.char.localeCompare(b.char))
+    .slice(-maxLetters)
+    .map(entry => {
+      const heightPct = Math.max(5, entry.p * conservation * 100);
+      return {
+        char: entry.char,
+        heightPct,
+        fontSize: clamp(Math.round(6 + heightPct * 0.22), 7, 22)
+      };
+    });
+}
+
+function logoColorForChar(charRaw, settings) {
+  const char = normalizeResidue(charRaw, settings.type);
+  if (settings.type !== "protein") {
+    const base = "ACGTU".includes(char) ? char : "N";
+    return currentColors[`nt-${base}-fg`] || currentColors["nt-N-fg"] || "#0f172a";
+  }
+  
+  let scheme = settings.colorScheme;
+  if (scheme === "auto") scheme = "clustal";
+  if (scheme === "zappo") return currentColors[`${proteinZappoClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
+  if (scheme === "taylor") return currentColors[`${proteinTaylorClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
+  if (scheme === "clustal") return currentColors[`${proteinClustalClass(char)}-fg`] || currentColors["mono-fg"] || "#0f172a";
+  return currentColors["mono-fg"] || "#0f172a";
+}
+
 function makeCell(char, result, col, special = "", annotationObj = null) {
   const span = document.createElement("span");
   const c = char || " ";
@@ -2250,7 +2347,7 @@ function downloadText(filename, text, mime = "text/plain") {
   URL.revokeObjectURL(url);
 }
 
-function svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd) {
+function svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd, startCol = 0) {
   let svg = "";
   
   track.forEach(ann => {
@@ -2270,8 +2367,12 @@ function svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, curre
     }
     
     for (const r of ranges) {
-      const x1 = left + nameW + (r.start - 1) * stepW;
-      const x2 = left + nameW + r.end * stepW - currentGap;
+      const overlapStart = Math.max(r.start - 1, startCol);
+      const overlapEnd = Math.min(r.end - 1, startCol + len - 1);
+      if (overlapStart > overlapEnd) return;
+      
+      const x1 = left + nameW + (overlapStart - startCol) * stepW;
+      const x2 = left + nameW + (overlapEnd - startCol + 1) * stepW - currentGap;
       
       // Draw background highlight behind sequence columns if enabled
       if (ann.hasBg && seqYStart !== undefined && seqYEnd !== undefined) {
@@ -2355,7 +2456,7 @@ function svgRangeAnnotationRow(track, y, len, result, cellW, cellH, stepW, curre
   return svg;
 }
 
-function makeAlignmentSVG(result) {
+function makeAlignmentSVGUnwrapped(result) {
   const settings = result.settings;
   const cellW = 14, cellH = 18, nameW = 190, top = 36, left = 12;
   const stepW = cellW + currentGap;
@@ -2515,10 +2616,213 @@ function makeAlignmentSVG(result) {
   return svg;
 }
 
+function makeAlignmentSVG(result) {
+  const settings = result.settings;
+  const cellW = 14, cellH = 18, nameW = 190, top = 36, left = 12;
+  const logoH = 40;
+  const stepW = cellW + currentGap;
+  const stepH = cellH + currentGap;
+  const logoStepH = logoH + currentGap;
+  const len = result.aligned[0]?.length || 0;
+  const wrap = clamp(Number(settings.wrapCols) || len || 80, 20, 200);
+  const blockCols = Math.min(wrap, Math.max(len, 1));
+  const blockCount = Math.max(1, Math.ceil(len / wrap));
+  const blockGapY = 22;
+  
+  const topTracks = packAnnotations(result.rangeAnnotations || [], "top");
+  const bottomTracks = packAnnotations(result.rangeAnnotations || [], "bottom");
+  const topRangeCount = topTracks.length;
+  const bottomRangeCount = bottomTracks.length;
+  const rangeTrackCount = topRangeCount + bottomRangeCount;
+  
+  const hasRuler = settings.showColumnNumbers ? 1 : 0;
+  const rows = result.aligned.length + rangeTrackCount + (settings.showConsensus ? 1 : 0) + (settings.showSimilarity ? 1 : 0) + hasRuler;
+  const blockHeight = rows * stepH + (settings.showLogo ? logoStepH : 0);
+  const posW = 44;
+  const width = Math.max(900, left + nameW + blockCols * stepW + posW + 36);
+  const height = top + blockCount * blockHeight + Math.max(0, blockCount - 1) * blockGapY + 70;
+  const esc = escapeHtml;
+  
+  let svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">`;
+  svg += `<rect width="100%" height="100%" fill="#ffffff"/><text x="${left}" y="24" font-family="Arial" font-size="18" font-weight="700">Sequence alignment</text>`;
+  
+  let y = top;
+  for (let start = 0; start < Math.max(len, 1); start += wrap) {
+    const end = Math.min(start + wrap, len);
+    const blockLen = end - start;
+    const seqYStart = y + (hasRuler + topRangeCount) * stepH + (settings.showLogo ? logoStepH : 0);
+    const seqYEnd = seqYStart + result.aligned.length * stepH;
+    
+    if (settings.showColumnNumbers) {
+      svg += `<text x="${left}" y="${y + 13}" font-family="Arial" font-size="11" font-weight="700" fill="#64748b">Position</text>`;
+      const rulerChars = Array(blockLen).fill(" ");
+      for (let col = start; col < end; col++) {
+        const colNum = col + 1;
+        const localCol = col - start;
+        if (colNum === 1 || colNum % 10 === 0) {
+          const numStr = String(colNum);
+          for (let i = 0; i < numStr.length; i++) {
+            const idx = localCol + i;
+            if (idx < blockLen) rulerChars[idx] = numStr[i];
+          }
+        } else if (colNum % 5 === 0 && rulerChars[localCol] === " ") {
+          rulerChars[localCol] = "\u00B7";
+        }
+      }
+      for (let c = 0; c < blockLen; c++) {
+        svg += svgRulerCell(rulerChars[c], left + nameW + c * stepW, y, cellW, cellH);
+      }
+      y += stepH;
+    }
+    
+    topTracks.forEach(track => {
+      svg += svgRangeAnnotationRow(track, y, blockLen, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd, start);
+      y += stepH;
+    });
+    
+    if (settings.showLogo) {
+      svg += `<text x="${left}" y="${y + 24}" font-family="monospace" font-size="12" font-weight="700" fill="#64748b">Logo</text>`;
+      for (let c = start; c < end; c++) {
+        svg += svgLogoCell(result, c, left + nameW + (c - start) * stepW, y, cellW, logoH);
+      }
+      y += logoStepH;
+    }
+    
+    const seqYMap = new Map();
+    for (let r = 0; r < result.aligned.length; r++) {
+      const name = result.names[r];
+      const sequence = result.aligned[r];
+      seqYMap.set(name, y);
+      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" fill="#334155">${esc(name.slice(0, 26))}</text>`;
+      
+      let unalignedPos = sequence.slice(0, start).replace(/-/g, "").length;
+      for (let c = start; c < end; c++) {
+        const char = sequence[c];
+        let ann = null;
+        if (char !== "-") {
+          unalignedPos++;
+          ann = result.residueAnnotations && result.residueAnnotations.get(`${name}:${unalignedPos}`);
+        }
+        svg += svgCell(char, left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, false, false, ann);
+      }
+      svg += `<text x="${left + nameW + blockLen * stepW + 12 + posW}" y="${y + 13}" text-anchor="end" font-family="monospace" font-size="12" font-weight="500" fill="#64748b">${esc(residuePosition(sequence.slice(0, end)))}</text>`;
+      y += stepH;
+    }
+    
+    if (result.rangeAnnotations && result.rangeAnnotations.length > 0) {
+      for (const ann of result.rangeAnnotations) {
+        if (ann.type === "range") continue;
+        
+        const ranges = ann.ranges && ann.ranges.length > 0 ? ann.ranges : [{ start: ann.start, end: ann.end }];
+        for (const r of ranges) {
+          const overlapStart = Math.max(r.start - 1, start);
+          const overlapEnd = Math.min(r.end - 1, end - 1);
+          if (overlapStart > overlapEnd) continue;
+          
+          let yStart = seqYStart;
+          let yEnd = seqYEnd;
+          const rSeqs = r.sequences || ann.sequences;
+          if (rSeqs && rSeqs.length > 0 && !rSeqs.includes("all")) {
+            let minY = Infinity;
+            let maxY = -Infinity;
+            for (const name of rSeqs) {
+              if (seqYMap.has(name)) {
+                const rowY = seqYMap.get(name);
+                minY = Math.min(minY, rowY);
+                maxY = Math.max(maxY, rowY + stepH);
+              }
+            }
+            if (minY !== Infinity) {
+              yStart = minY;
+              yEnd = maxY;
+            }
+          }
+          
+          const x1 = left + nameW + (overlapStart - start) * stepW;
+          const x2 = left + nameW + (overlapEnd - start + 1) * stepW - currentGap;
+          let oShape = ann.overlayShape || "rect";
+          let lStyle = ann.lineStyle || "solid";
+          let lWidth = ann.lineWidth || 2;
+          let fBoxes = ann.fillBoxes !== false;
+          
+          if (ann.type === "overlay") {
+            fBoxes = !!ann.hasBg;
+          } else if (ann.type === "rect-overlay") {
+            oShape = "rect"; lStyle = "solid"; lWidth = 1; fBoxes = true;
+          } else if (ann.type === "border-overlay") {
+            oShape = "rect"; lStyle = "dashed"; lWidth = 2; fBoxes = false;
+          } else if (ann.type === "line-overlay") {
+            oShape = "lines"; lStyle = "dashed"; lWidth = 1.5; fBoxes = false;
+          }
+          
+          let dasharray = "";
+          if (lStyle === "dashed") dasharray = "4,2";
+          else if (lStyle === "dotted") dasharray = "1,2";
+          
+          const strokeColor = (ann.type === "overlay") ? (ann.textColor || "#000000") : (ann.color || "#000000");
+          if (fBoxes) {
+            svg += `<rect x="${x1}" y="${yStart}" width="${x2 - x1}" height="${yEnd - yStart}" fill="${ann.color}" fill-opacity="0.15" stroke="none"/>`;
+          }
+          
+          if (lStyle !== "none" && lWidth > 0) {
+            const dashAttr = dasharray ? ` stroke-dasharray="${dasharray}"` : "";
+            if (oShape === "rect") {
+              svg += `<rect x="${x1}" y="${yStart}" width="${x2 - x1}" height="${yEnd - yStart}" fill="none" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+            } else if (oShape === "lines") {
+              svg += `<line x1="${x1}" y1="${yStart}" x2="${x1}" y2="${yEnd}" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+              svg += `<line x1="${x2}" y1="${yStart}" x2="${x2}" y2="${yEnd}" stroke="${strokeColor}" stroke-width="${lWidth}"${dashAttr}/>`;
+            }
+          }
+        }
+      }
+    }
+    
+    bottomTracks.forEach(track => {
+      svg += svgRangeAnnotationRow(track, y, blockLen, result, cellW, cellH, stepW, currentGap, nameW, left, esc, seqYStart, seqYEnd, start);
+      y += stepH;
+    });
+    
+    if (settings.showConsensus) {
+      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" font-weight="700" fill="#0f766e">Consensus</text>`;
+      for (let c = start; c < end; c++) {
+        svg += svgCell(consensusAt(result.aligned, c, settings), left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, true);
+      }
+      y += stepH;
+    }
+    
+    if (settings.showSimilarity) {
+      svg += `<text x="${left}" y="${y + 13}" font-family="monospace" font-size="12" fill="#64748b">Similarity</text>`;
+      for (let c = start; c < end; c++) {
+        svg += svgCell(similarityMark(result.aligned, c, settings), left + nameW + (c - start) * stepW, y, cellW, cellH, result, c, false, true);
+      }
+      y += stepH;
+    }
+    
+    if (end < len) y += blockGapY;
+  }
+  
+  svg += `<text x="${left}" y="${height - 18}" font-family="Arial" font-size="12" fill="#64748b">Generated locally by Sequence Alignment Studio. * identical column, : similar column.</text>`;
+  svg += `</svg>`;
+  return svg;
+}
+
 function svgRulerCell(ch, x, y, w, h) {
   const label = ch === " " ? "" : ch;
   return `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="none" stroke="none"/>` +
     `<text x="${x + w / 2}" y="${y + 13}" text-anchor="middle" font-family="monospace" font-size="10" font-weight="600" fill="#64748b">${escapeHtml(label)}</text>`;
+}
+
+function svgLogoCell(result, col, x, y, w, h) {
+  let svg = `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#ffffff" stroke="transparent" stroke-width="0"/>`;
+  let bottomPx = 0;
+  for (const entry of logoEntriesAt(result, col)) {
+    const blockH = entry.heightPct * h / 100;
+    const fontSize = clamp(Math.round(entry.fontSize * 0.9), 7, 20);
+    const textY = y + h - bottomPx - Math.max(1, (blockH - fontSize) / 2);
+    svg += `<text x="${x + w / 2}" y="${textY}" text-anchor="middle" font-family="monospace" font-size="${fontSize}" font-weight="900" fill="${logoColorForChar(entry.char, result.settings)}">${escapeHtml(entry.char)}</text>`;
+    bottomPx += blockH;
+  }
+  return svg;
 }
 
 function svgAnnotationCell(ch, x, y, w, h, isAnnotated, color, textColor, showBg) {
@@ -2557,7 +2861,7 @@ function svgColors(ch, result, col, consensus, similarity) {
     const bg = currentColors[isBw ? "consensus-bw-bg" : "consensus-bg"] || "#ffffff";
     const fg = currentColors[isBw ? "consensus-bw-fg" : "consensus-fg"] || "#000000";
     const isTrans = bg === "transparent";
-    return { bg: isTrans ? "#ffffff" : bg, fg, stroke: isTrans ? "transparent" : fg, sw: isTrans ? 0 : 1 };
+    return { bg: isTrans ? "#ffffff" : bg, fg, stroke: "transparent", sw: 0 };
   }
   const cls = cellClass(ch, result.settings, result.aligned, col);
   const bg = currentColors[`${cls}-bg`] || currentColors["mono-bg"];
@@ -2647,6 +2951,7 @@ DOM.colorScheme.addEventListener("change", () => {
   } 
 });
 DOM.showConsensus.addEventListener("change", () => { if (currentResult) { currentResult.settings.showConsensus = DOM.showConsensus.checked; renderAlignmentViewer(currentResult); } });
+DOM.showLogo.addEventListener("change", () => { if (currentResult) { currentResult.settings.showLogo = DOM.showLogo.checked; renderAlignmentViewer(currentResult); } });
 DOM.showSimilarity.addEventListener("change", () => { if (currentResult) { currentResult.settings.showSimilarity = DOM.showSimilarity.checked; renderAlignmentViewer(currentResult); } });
 DOM.wrapCols.addEventListener("change", () => { if (currentResult) { currentResult.settings.wrapCols = clamp(Number(DOM.wrapCols.value) || 80, 20, 200); renderAlignmentViewer(currentResult); } });
 DOM.resetColorsBtn.addEventListener("click", () => {
