@@ -2,6 +2,8 @@
 
 A local JavaScript app for exploratory alignment of DNA, RNA, and protein FASTA sequences.
 
+Use the web app directly at: <https://yo-yerush.github.io/Local_alignment_app/>
+
 Open `index.html` in any modern browser. No installation, Node.js, R, Python, server, or internet connection is required.
 
 ## What it does
@@ -30,10 +32,12 @@ Open `index.html` in any modern browser. No installation, Node.js, R, Python, se
   - Protein Zappo-style groups.
   - Protein Taylor-like groups.
   - Conservation-only coloring.
-  - Consensus row and similarity marks.
+  - Conservation black/white and monochrome modes.
+  - Optional sequence logo row, consensus row, similarity marks, and column numbers.
+  - Customizable colors, box spacing/roundness, output font, and output font size.
 - Exports:
   - Aligned FASTA.
-  - Alignment plot as SVG.
+  - Alignment plot as SVG, including wrapping, optional logo/consensus/similarity rows, row-end positions, and legend.
 - Supports custom structural annotations & highlights:
   - **Range Tracks**: Add empty spacer rows above or below the alignment to draw structural shapes (Helix Wave `〰️`, Loop Arch `⅏`, Cylinder Box `▱`, Helix-Loop-Helix combo `🧬`, Curly Brackets, Straight Lines, Square Brackets, or Arrow Lines) with centered text labels and optional translucent column highlights.
   - **Region Overlays**: Highlight specific columns, residues, or rows with background blocks, borders, or divider lines without drawing text labels on the plot.
@@ -68,10 +72,9 @@ For many sequences, very long sequences, or publication-grade multiple sequence 
 
 The multiple sequence alignment is a simple progressive center-star implementation. It is useful and transparent, but it is not intended to replace mature MSA programs for difficult biological inference.
 
-The SVG export is best for short to medium alignments. Very long alignments can produce wide SVG files.
+The SVG export is best for short to medium alignments. Very long alignments can produce large SVG files, although wrapped export keeps the plot from becoming one extremely wide row.
 
 ## Authors
 
 Developed by **Yonatan Yerushalmy** (Rachel Amir's group).
 GitHub Repository: [Local_alignment_app](https://github.com/Yo-yerush/Local_alignment_app)
-
